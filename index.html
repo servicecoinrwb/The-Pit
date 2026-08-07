@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk — Arc perp bring-up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a1420;        /* field */
+  --slab:#16263f;       /* panel */
+  --edge:#22364f;       /* rules */
+  --paper:#f5efe3;      /* primary text */
+  --mute:#8ba3bd;       /* secondary text */
+  --sky:#6fb7e3;        /* live / action */
+  --jade:#5fa88a;       /* settled / ok */
+  --rust:#b5512f;       /* fault */
+  --amber:#d9a441;      /* waiting */
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--ink);color:var(--paper);
+  font:15px/1.55 "IBM Plex Mono",ui-monospace,monospace;
+  padding:0 0 80px;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 18px}
+
+/* ── masthead ─────────────────────────────────────────── */
+header{border-bottom:1px solid var(--edge);padding:26px 0 18px;margin-bottom:26px}
+h1{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-weight:700;font-size:30px;letter-spacing:.02em;text-transform:uppercase;
+}
+h1 span{color:var(--sky)}
+.sub{color:var(--mute);font-size:13px;margin-top:5px}
+.net{
+  display:inline-flex;align-items:center;gap:7px;margin-top:12px;
+  border:1px solid var(--edge);border-radius:2px;padding:5px 10px;font-size:12px;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--rust)}
+.dot.on{background:var(--jade)}
+
+/* ── tape: the live market strip ──────────────────────── */
+.tape{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--edge);
+      border:1px solid var(--edge);margin-bottom:26px}
+.tick{background:var(--slab);padding:13px 14px}
+.tick .sym{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;
+           font-size:13px;letter-spacing:.09em;color:var(--mute);text-transform:uppercase}
+.tick .px{font-size:21px;font-weight:500;margin:3px 0;font-variant-numeric:tabular-nums}
+.tick .st{font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+.st.ok{color:var(--jade)} .st.warn{color:var(--amber)} .st.bad{color:var(--rust)}
+.tick .age{font-size:11px;color:var(--mute);margin-top:2px}
+
+/* ── panels ───────────────────────────────────────────── */
+section{border:1px solid var(--edge);background:var(--slab);margin-bottom:20px}
+.head{display:flex;align-items:baseline;gap:11px;padding:13px 16px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.step{
+  font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:12px;
+  color:var(--ink);background:var(--mute);border-radius:2px;padding:1px 7px;letter-spacing:.06em;
+}
+.step.done{background:var(--jade)} .step.now{background:var(--sky)}
+h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:17px;letter-spacing:.02em}
+.how{padding:11px 16px;color:var(--mute);font-size:12.5px;line-height:1.6;border-bottom:1px solid var(--edge)}
+.body{padding:15px 16px}
+
+/* ── data rows ────────────────────────────────────────── */
+.row{display:flex;justify-content:space-between;gap:14px;padding:6px 0;
+     border-bottom:1px dotted var(--edge);font-size:13.5px}
+.row:last-child{border-bottom:0}
+.row .k{color:var(--mute)}
+.row .v{font-variant-numeric:tabular-nums;text-align:right;word-break:break-all}
+.v.ok{color:var(--jade)} .v.bad{color:var(--rust)} .v.warn{color:var(--amber)}
+
+/* ── controls ─────────────────────────────────────────── */
+.act{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:13px}
+button{
+  font:600 13px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.05em;text-transform:uppercase;
+  background:var(--sky);color:var(--ink);border:0;border-radius:2px;padding:10px 16px;cursor:pointer;
+}
+button:hover:not(:disabled){filter:brightness(1.12)}
+button:focus-visible{outline:2px solid var(--paper);outline-offset:2px}
+button:disabled{background:var(--edge);color:var(--mute);cursor:not-allowed}
+button.ghost{background:transparent;color:var(--sky);border:1px solid var(--edge)}
+input{
+  font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--paper);
+  border:1px solid var(--edge);border-radius:2px;padding:9px 11px;width:190px;
+}
+input:focus{outline:none;border-color:var(--sky)}
+.why{font-size:12px;color:var(--amber);margin-top:9px;line-height:1.5}
+.why.err{color:var(--rust)}
+.why.ok{color:var(--jade)}
+.hint{font-size:11.5px;color:var(--mute);margin-top:5px}
+
+/* ── log ──────────────────────────────────────────────── */
+#log{font-size:12px;color:var(--mute);max-height:210px;overflow:auto;line-height:1.75}
+#log div{padding:2px 0;border-bottom:1px dotted var(--edge);word-break:break-all}
+#log a{color:var(--sky)}
+.addr{font-size:11.5px;color:var(--mute)}
+
+@media (max-width:620px){
+  .tape{grid-template-columns:1fr}
+  input{width:100%}
+  .act{flex-direction:column;align-items:stretch}
+  button{width:100%}
+}
+@media (prefers-reduced-motion:no-preference){
+  .tick .px{transition:color .25s}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Desk <span>/ bring-up</span></h1>
+  <div class="sub">Arc testnet 5042002 — PriceEngine, Chips, Ballast</div>
+  <div class="net"><span class="dot" id="netdot"></span><span id="netlabel">Not connected</span></div>
+</header>
+
+<!-- live market strip -->
+<div class="tape" id="tape"></div>
+
+<!-- 1 ── wallet -->
+<section>
+  <div class="head"><span class="step" id="s1">01</span><h2>Wallet</h2></div>
+  <div class="how">Everything below signs from this address. The owner keys on PriceEngine and Ballast are the deployer, so use that wallet or the admin calls will revert.</div>
+  <div class="body">
+    <div class="row"><span class="k">Address</span><span class="v" id="acct">—</span></div>
+    <div class="row"><span class="k">Chain</span><span class="v" id="chain">—</span></div>
+    <div class="row"><span class="k">Gas balance (USDC)</span><span class="v" id="gas">—</span></div>
+    <div class="act"><button id="btnConnect">Connect wallet</button></div>
+    <div class="why" id="why1"></div>
+  </div>
+</section>
+
+<!-- 2 ── chips -->
+<section>
+  <div class="head"><span class="step" id="s2">02</span><h2>Test collateral</h2>
+    <span class="addr" id="aChips"></span></div>
+  <div class="how">Chips stands in for USDC because the Arc faucet gives one dollar a day, which cannot seed a pool deep enough for any number on this desk to mean anything. Six decimals, open mint, worthless on purpose. Each faucet call mints 100,000.</div>
+  <div class="body">
+    <div class="row"><span class="k">Your balance</span><span class="v" id="chipBal">—</span></div>
+    <div class="row"><span class="k">Approved to Ballast</span><span class="v" id="allow">—</span></div>
+    <div class="act">
+      <button id="btnFaucet">Mint 100,000</button>
+      <button id="btnFaucet5" class="ghost">Mint 500,000</button>
+    </div>
+    <div class="why" id="why2"></div>
+  </div>
+</section>
+
+<!-- 3 ── seed -->
+<section>
+  <div class="head"><span class="step" id="s3">03</span><h2>Seed the vault</h2>
+    <span class="addr" id="aBallast"></span></div>
+  <div class="how">Seeding mints locked shares to a burn address, which puts a permanent floor under total supply. Until it runs, every deposit reverts — an unseeded vault is exactly the state the first-depositor attack needs. This can only happen once, and only the owner can do it.</div>
+  <div class="body">
+    <div class="row"><span class="k">Vault state</span><span class="v" id="vState">—</span></div>
+    <div class="row"><span class="k">Share decimals</span><span class="v" id="vDec">—</span></div>
+    <div class="row"><span class="k">Locked shares</span><span class="v" id="vDead">—</span></div>
+    <div class="act">
+      <input id="seedAmt" value="1000" inputmode="decimal">
+      <button id="btnSeed">Approve &amp; seed</button>
+    </div>
+    <div class="hint">Amount in whole Chips. Runs the approval and the seed as two signatures.</div>
+    <div class="why" id="why3"></div>
+  </div>
+</section>
+
+<!-- 4 ── deposit -->
+<section>
+  <div class="head"><span class="step" id="s4">04</span><h2>Pool depth</h2></div>
+  <div class="how">This is the money that takes the other side of every trade. Traders who win are paid from here; traders who lose pay into here. Deeper means the desk can carry larger positions before it runs out of room to honour them.</div>
+  <div class="body">
+    <div class="row"><span class="k">Total assets</span><span class="v" id="bAssets">—</span></div>
+    <div class="row"><span class="k">Idle (withdrawable)</span><span class="v" id="bIdle">—</span></div>
+    <div class="row"><span class="k">Reserved against positions</span><span class="v" id="bRes">—</span></div>
+    <div class="row"><span class="k">Your shares</span><span class="v" id="bShares">—</span></div>
+    <div class="row"><span class="k">Assets per share</span><span class="v" id="bPps">—</span></div>
+    <div class="row"><span class="k">Liability feed</span><span class="v" id="bHealth">—</span></div>
+    <div class="act">
+      <input id="depAmt" value="300000" inputmode="decimal">
+      <button id="btnDeposit">Approve &amp; deposit</button>
+    </div>
+    <div class="why" id="why4"></div>
+  </div>
+</section>
+
+<!-- 5 ── engine -->
+<section>
+  <div class="head"><span class="step" id="s5">05</span><h2>Price engine</h2>
+    <span class="addr" id="aEngine"></span></div>
+  <div class="how">The desk prices everything from here. A price older than the staleness window stops being a price and trading halts — a dead feeder shuts the desk rather than settling anyone against a stale print. US30 also closes outside its session, which is why it reads shut on a weekend.</div>
+  <div class="body">
+    <div class="row"><span class="k">Markets listed</span><span class="v" id="mCount">—</span></div>
+    <div class="row"><span class="k">Rejected pushes</span><span class="v" id="mRej">—</span></div>
+    <div class="act">
+      <input id="pxEth" placeholder="ETH" inputmode="decimal">
+      <input id="pxBtc" placeholder="BTC" inputmode="decimal">
+      <input id="pxUs30" placeholder="US30" inputmode="decimal">
+      <button id="btnPush">Push prices</button>
+    </div>
+    <div class="hint">Whole dollars. Blank fields are skipped. A move beyond the deviation limit is rejected on purpose — that breaker is what stops a typo from liquidating the book.</div>
+    <div class="why" id="why5"></div>
+  </div>
+</section>
+
+<section>
+  <div class="head"><h2>Activity</h2></div>
+  <div class="body"><div id="log"><div>Ready. Connect a wallet to read chain state.</div></div></div>
+</section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+<script>
+/* ─── addresses ─────────────────────────────────────────────────────── */
+const A = {
+  engine : "0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
+  chips  : "0x207A26e236520b41e98098dCd656D453CDA931d6",
+  ballast: "0x5De190b7dd6eD5B53596859710E0De1d6613bD68",
+};
+const CHAIN = 5042002;
+const CHAIN_HEX = "0x4CEF52";                       // 5042002
+const RPCS = [                                      // browser-safe only
+  "https://rpc.blockdaemon.testnet.arc.network",
+  "https://arc-testnet.drpc.org",
+  "https://rpc.quicknode.testnet.arc.network",
+  "https://5042002.rpc.thirdweb.com",
+];
+const SCAN = "https://testnet.arcscan.app";
+const MKT = [{id:1,sym:"ETH"},{id:2,sym:"BTC"},{id:3,sym:"US30"}];
+const STATUS = ["OK","NOT LISTED","PAUSED","NO PRICE","STALE","MARKET CLOSED"];
+
+/* ─── abis ──────────────────────────────────────────────────────────── */
+const ERC20 = [
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)",
+  "function decimals() view returns (uint8)",
+  "function faucet()",
+  "function mint(address,uint256)",
+];
+const BALLAST = [
+  "function stats() view returns (uint256 assets,uint256 raw,uint256 idle,uint256 reserved,uint256 supply,uint256 assetsPerShare,bool healthy,bool ready)",
+  "function initialised() view returns (bool)",
+  "function initialise(uint256)",
+  "function deposit(uint256,address) returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function owner() view returns (address)",
+  "function perp() view returns (address)",
+  "function DEAD_SHARES() view returns (uint256)",
+];
+const ENGINE = [
+  "function peek(uint256) view returns (uint256 value,uint64 updatedAt,uint64 roundId,uint8 s)",
+  "function marketCount() view returns (uint256)",
+  "function rejectedPushes(uint256) view returns (uint256)",
+  "function pushPrices(uint256[],uint128[])",
+  "function owner() view returns (address)",
+];
+
+/* ─── state ─────────────────────────────────────────────────────────── */
+let provider, signer, me, read;
+const $ = id => document.getElementById(id);
+const E = ethers;
+
+function log(msg, hash){
+  const d = document.createElement("div");
+  const t = new Date().toLocaleTimeString();
+  d.innerHTML = `${t} — ${msg}` + (hash ? ` <a href="${SCAN}/tx/${hash}" target="_blank" rel="noopener">view</a>` : "");
+  $("log").prepend(d);
+}
+function say(el, msg, kind){ const n=$(el); n.textContent=msg||""; n.className="why"+(kind?" "+kind:""); }
+function fmt(v, dec, places=2){
+  const s = E.formatUnits(v, dec);
+  const n = Number(s);
+  if (!isFinite(n)) return s;
+  return n.toLocaleString(undefined,{minimumFractionDigits:places,maximumFractionDigits:places});
+}
+const short = a => a.slice(0,6)+"…"+a.slice(-4);
+
+/* read-only provider so the page shows real state before any wallet connects */
+function readProvider(){
+  if (read) return read;
+  read = new E.FallbackProvider(
+    RPCS.map((u,i)=>({ provider:new E.JsonRpcProvider(u,CHAIN,{staticNetwork:true}), priority:i+1, stallTimeout:2500, weight:1 })),
+    CHAIN
+  );
+  return read;
+}
+const C = {
+  chips  : p => new E.Contract(A.chips,   ERC20,   p),
+  ballast: p => new E.Contract(A.ballast, BALLAST, p),
+  engine : p => new E.Contract(A.engine,  ENGINE,  p),
+};
+
+/* ─── tape ──────────────────────────────────────────────────────────── */
+function paintTape(rows){
+  $("tape").innerHTML = rows.map(r=>{
+    const cls = r.s===0 ? "ok" : (r.s===5 ? "warn" : "bad");
+    return `<div class="tick">
+      <div class="sym">${r.sym}</div>
+      <div class="px">${r.px}</div>
+      <div class="st ${cls}">${STATUS[r.s] ?? "?"}</div>
+      <div class="age">${r.age}</div>
+    </div>`;
+  }).join("");
+}
+paintTape(MKT.map(m=>({sym:m.sym,px:"—",s:3,age:"reading chain…"})));
+
+/* ─── refresh ───────────────────────────────────────────────────────── */
+async function refresh(){
+  const p = provider || readProvider();
+
+  /* engine + tape */
+  try{
+    const en = C.engine(p);
+    const now = Math.floor(Date.now()/1000);
+    const rows = [];
+    let rej = 0n;
+    for (const m of MKT){
+      const [value,updatedAt,,s] = await en.peek(m.id);
+      rej += await en.rejectedPushes(m.id);
+      const age = Number(updatedAt)===0 ? "never pushed"
+                : `${now-Number(updatedAt)}s ago`;
+      rows.push({ sym:m.sym, s:Number(s), age,
+        px: Number(value)===0 ? "—" : "$"+fmt(value,18,2) });
+    }
+    paintTape(rows);
+    $("mCount").textContent = (await en.marketCount()).toString();
+    $("mRej").textContent = rej.toString();
+    $("mRej").className = "v" + (rej>0n ? " warn" : "");
+    if (rows.some(r=>r.s===5))
+      say("why5","US30 reads closed because the cash session is over. That is the session logic working — ETH and BTC never close.","ok");
+  }catch(e){ log("Engine read failed: "+(e.shortMessage||e.message)); }
+
+  /* vault */
+  let vDec = 18, ready=false;
+  try{
+    const b = C.ballast(p);
+    const init = await b.initialised();
+    vDec = Number(await b.decimals());
+    $("vDec").textContent = vDec + "  (collateral 6 + offset " + (vDec-6) + ")";
+    $("vDead").textContent = init ? E.formatUnits(await b.DEAD_SHARES(), vDec) + " burned" : "not yet minted";
+    $("vState").textContent = init ? "Seeded" : "Not seeded — deposits blocked";
+    $("vState").className = "v " + (init ? "ok" : "warn");
+    $("s3").className = "step " + (init ? "done" : "now");
+    ready = init;
+
+    const st = await b.stats();
+    $("bAssets").textContent = fmt(st[0],6)+" CHIP";
+    $("bIdle").textContent   = fmt(st[2],6)+" CHIP";
+    $("bRes").textContent    = fmt(st[3],6)+" CHIP";
+    $("bPps").textContent    = init ? Number(E.formatUnits(st[5],6)).toFixed(6) : "—";
+    $("bHealth").textContent = st[6] ? "reachable" : "unreachable — NAV overstated";
+    $("bHealth").className   = "v " + (st[6] ? "ok" : "bad");
+    if (me){
+      const sh = await b.balanceOf(me);
+      $("bShares").textContent = fmt(sh,vDec,4)+" BLST";
+      $("s4").className = "step " + (sh>0n ? "done" : (ready?"now":""));
+    }
+    if (!init) say("why4","Seed the vault first. Deposits revert until the locked shares exist.","");
+    else if (st[3]>0n) say("why4","Reserved capital is committed to open positions and cannot be withdrawn until they close.","");
+    else say("why4","","");
+  }catch(e){ log("Vault read failed: "+(e.shortMessage||e.message)); }
+
+  /* chips */
+  if (me){
+    try{
+      const c = C.chips(p);
+      const bal = await c.balanceOf(me);
+      const al  = await c.allowance(me, A.ballast);
+      $("chipBal").textContent = fmt(bal,6)+" CHIP";
+      $("allow").textContent   = fmt(al,6)+" CHIP";
+      $("s2").className = "step " + (bal>0n ? "done" : "now");
+      if (bal===0n) say("why2","No Chips yet. Mint some — nothing downstream works without collateral.","");
+      else say("why2","","");
+      $("gas").textContent = fmt(await p.getBalance(me),18,6);
+    }catch(e){ log("Token read failed: "+(e.shortMessage||e.message)); }
+  }
+}
+
+/* ─── wallet ────────────────────────────────────────────────────────── */
+async function connect(){
+  if (!window.ethereum){ say("why1","No wallet found. This page needs MetaMask or another injected wallet.","err"); return; }
+  try{
+    provider = new E.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts",[]);
+    const net = await provider.getNetwork();
+    if (Number(net.chainId) !== CHAIN){
+      try{
+        await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN_HEX}]});
+      }catch(sw){
+        if (sw.code === 4902){
+          await window.ethereum.request({method:"wallet_addEthereumChain",params:[{
+            chainId:CHAIN_HEX, chainName:"Arc Network Testnet",
+            nativeCurrency:{name:"USDC",symbol:"USDC",decimals:18},
+            rpcUrls:[RPCS[0]], blockExplorerUrls:[SCAN]
+          }]});
+        } else throw sw;
+      }
+      provider = new E.BrowserProvider(window.ethereum);
+    }
+    signer = await provider.getSigner();
+    me = await signer.getAddress();
+    $("acct").textContent = me;
+    $("chain").textContent = "Arc testnet 5042002";
+    $("netdot").className = "dot on";
+    $("netlabel").textContent = short(me);
+    $("s1").className = "step done";
+    $("btnConnect").textContent = "Reconnect";
+    say("why1","","");
+    log("Connected "+short(me));
+    refresh();
+  }catch(e){ say("why1", e.shortMessage||e.message, "err"); }
+}
+
+function needWallet(w){
+  if (!signer){ say(w,"Connect a wallet first.","err"); return true; }
+  return false;
+}
+async function send(fn, label, whyId){
+  try{
+    say(whyId,"Waiting for signature…","");
+    const tx = await fn();
+    say(whyId,"Submitted. Waiting for the block…","");
+    log(label+" submitted", tx.hash);
+    await tx.wait();
+    say(whyId,label+" confirmed.","ok");
+    log(label+" confirmed", tx.hash);
+    await refresh();
+  }catch(e){
+    const m = e.shortMessage || e.reason || e.message || "failed";
+    say(whyId, m, "err");
+    log(label+" failed: "+m);
+  }
+}
+
+/* ─── actions ───────────────────────────────────────────────────────── */
+$("btnConnect").onclick = connect;
+
+$("btnFaucet").onclick = () => {
+  if (needWallet("why2")) return;
+  send(()=>C.chips(signer).faucet(), "Mint 100,000 Chips", "why2");
+};
+$("btnFaucet5").onclick = () => {
+  if (needWallet("why2")) return;
+  send(()=>C.chips(signer).mint(me, E.parseUnits("500000",6)), "Mint 500,000 Chips", "why2");
+};
+
+$("btnSeed").onclick = async () => {
+  if (needWallet("why3")) return;
+  const amt = E.parseUnits(($("seedAmt").value||"0").trim(), 6);
+  if (amt === 0n){ say("why3","Enter an amount above zero.","err"); return; }
+  const c = C.chips(signer);
+  const al = await c.allowance(me, A.ballast);
+  if (al < amt){
+    await send(()=>c.approve(A.ballast, amt), "Approve "+$("seedAmt").value+" Chips", "why3");
+  }
+  await send(()=>C.ballast(signer).initialise(amt), "Seed the vault", "why3");
+};
+
+$("btnDeposit").onclick = async () => {
+  if (needWallet("why4")) return;
+  const amt = E.parseUnits(($("depAmt").value||"0").trim(), 6);
+  if (amt === 0n){ say("why4","Enter an amount above zero.","err"); return; }
+  const c = C.chips(signer);
+  const bal = await c.balanceOf(me);
+  if (bal < amt){ say("why4",`Only ${fmt(bal,6)} Chips on hand. Mint more, or deposit less.`,"err"); return; }
+  const al = await c.allowance(me, A.ballast);
+  if (al < amt){
+    await send(()=>c.approve(A.ballast, amt), "Approve "+$("depAmt").value+" Chips", "why4");
+  }
+  await send(()=>C.ballast(signer).deposit(amt, me), "Deposit into Ballast", "why4");
+};
+
+$("btnPush").onclick = () => {
+  if (needWallet("why5")) return;
+  const ids=[], vals=[];
+  [["pxEth",1],["pxBtc",2],["pxUs30",3]].forEach(([el,id])=>{
+    const v = ($(el).value||"").trim();
+    if (v){ ids.push(id); vals.push(E.parseUnits(v,18)); }
+  });
+  if (!ids.length){ say("why5","Enter at least one price.","err"); return; }
+  send(()=>C.engine(signer).pushPrices(ids, vals), "Push "+ids.length+" price(s)", "why5");
+};
+
+/* ─── boot ──────────────────────────────────────────────────────────── */
+$("aChips").textContent   = short(A.chips);
+$("aBallast").textContent = short(A.ballast);
+$("aEngine").textContent  = short(A.engine);
+refresh();
+setInterval(refresh, 15000);
+if (window.ethereum){
+  window.ethereum.on?.("accountsChanged", ()=>location.reload());
+  window.ethereum.on?.("chainChanged",   ()=>location.reload());
+}
+</script>
+</body>
+</html>

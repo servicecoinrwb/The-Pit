@@ -132,9 +132,10 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
 <div class="wrap">
 
 <header>
-  <h1>Setup <span>&amp; admin</span></h1>
+  <h1 id="pageTitle">Setup <span>&amp; admin</span></h1>
   <div class="sub"><a href="trade.html" style="color:var(--sky)">&larr; trading</a> · <a href="portfolio.html" style="color:var(--sky)">portfolio</a> · one-time bring-up, collateral minting, and owner calls</div>
   <div class="net"><span class="dot" id="netdot"></span><span id="netlabel">Not connected</span></div>
+  <div id="roleNote" class="sub" style="margin-top:9px;color:var(--amber)"></div>
 </header>
 
 <!-- live market strip -->
@@ -170,7 +171,7 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
 </section>
 
 <!-- 3 ── seed -->
-<section>
+<section id="secSeed" hidden>
   <div class="head"><span class="step" id="s3">03</span><h2>Seed the vault</h2>
     <span class="addr" id="aBallast"></span></div>
   <div class="how">Seeding mints locked shares to a burn address, which puts a permanent floor under total supply. Until it runs, every deposit reverts — an unseeded vault is exactly the state the first-depositor attack needs. This can only happen once, and only the owner can do it.</div>
@@ -207,7 +208,7 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
 </section>
 
 <!-- 5 ── engine -->
-<section>
+<section id="secEngine" hidden>
   <div class="head"><span class="step" id="s5">05</span><h2>Price engine</h2>
     <span class="addr" id="aEngine"></span></div>
   <div class="how">The desk prices everything from here. A price older than the staleness window stops being a price and trading halts — a dead feeder shuts the desk rather than settling anyone against a stale print. US30 also closes outside its session, which is why it reads shut on a weekend.</div>
@@ -278,7 +279,7 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
 </section>
 
 <!-- 09 ── admin -->
-<section>
+<section id="secAdmin" hidden>
   <div class="head"><h2>Admin</h2></div>
   <div class="how">Owner-only calls. These revert from any other wallet. Authorising a pusher is what lets the feeder publish prices — nothing trades until that is done and the feeder is running.</div>
   <div class="body">
@@ -507,14 +508,28 @@ async function refresh(){
   try { await paintDesk(p); await paintPositions(p); quote(); }
   catch(e){ log("Desk read failed: "+(e.shortMessage||e.message)); }
 
-  /* owner */
+  /* owner
+     The contracts already reject non-owner calls, so this is presentation
+     rather than protection — but showing someone a Force Push button that
+     can only ever revert for them is worse than not showing it. Sections
+     stay hidden until ownership is confirmed, so a failed read hides them
+     rather than revealing them. */
   if (me){
+    let isO = false;
     try {
       const o = await C.engine(p).owner();
-      const isO = o.toLowerCase() === me.toLowerCase();
-      $("isOwner").textContent = isO ? "yes" : "no — these calls will revert";
-      $("isOwner").className = "v " + (isO ? "ok" : "warn");
+      isO = o.toLowerCase() === me.toLowerCase();
     } catch(e){}
+    ["secSeed","secEngine","secAdmin"].forEach(id=>{ const n=$(id); if(n) n.hidden = !isO; });
+    $("isOwner").textContent = isO ? "yes" : "no";
+    $("isOwner").className = "v " + (isO ? "ok" : "warn");
+    $("roleNote").textContent = isO
+      ? ""
+      : "Owner-only panels are hidden. You can mint test collateral and deposit into the pool from here.";
+    $("pageTitle").innerHTML = isO ? 'Setup <span>&amp; admin</span>' : 'Your <span>account</span>';
+  } else {
+    ["secSeed","secEngine","secAdmin"].forEach(id=>{ const n=$(id); if(n) n.hidden = true; });
+    $("roleNote").textContent = "Connect a wallet to see what you can do here.";
   }
 
   /* chips */

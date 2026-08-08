@@ -88,7 +88,16 @@ input{
   font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--paper);
   border:1px solid var(--edge);border-radius:2px;padding:9px 11px;width:190px;
 }
-input:focus{outline:none;border-color:var(--sky)}
+input:focus,select:focus{outline:none;border-color:var(--sky)}
+select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--paper);
+       border:1px solid var(--edge);border-radius:2px;padding:9px 11px}
+.pos{border:1px solid var(--edge);padding:11px;margin-bottom:9px}
+.pos .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:7px;flex-wrap:wrap}
+.pos .tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:12px;
+          letter-spacing:.06em;padding:1px 7px;border-radius:2px;color:var(--ink)}
+.tag.long{background:var(--jade)} .tag.short{background:var(--rust);color:var(--paper)}
+.pos.danger{border-color:var(--rust)}
+.warnbar{background:var(--rust);color:var(--paper);font-size:11.5px;padding:5px 8px;margin:-11px -11px 9px}
 .why{font-size:12px;color:var(--amber);margin-top:9px;line-height:1.5}
 .why.err{color:var(--rust)}
 .why.ok{color:var(--jade)}
@@ -208,6 +217,66 @@ input:focus{outline:none;border-color:var(--sky)}
   </div>
 </section>
 
+
+<!-- 06 ── ticket -->
+<section>
+  <div class="head"><span class="step" id="s6">06</span><h2>Order ticket</h2>
+    <span class="addr" id="aFloor"></span></div>
+  <div class="how">Size is the notional you control; margin is what you post against it. Leverage is size divided by margin and the engine caps it per market. Profit is capped at half your size and reserved in the pool the moment you open — a runner past that cap stops earning, which is the price of the pool being able to honour it at all.</div>
+  <div class="body">
+    <div class="act">
+      <select id="tkMkt"></select>
+      <select id="tkSide"><option value="long">Long</option><option value="short">Short</option></select>
+    </div>
+    <div class="act">
+      <input id="tkSize" value="1000" inputmode="decimal" placeholder="size">
+      <input id="tkMargin" value="100" inputmode="decimal" placeholder="margin">
+      <button id="btnOpen">Open</button>
+    </div>
+    <div class="row"><span class="k">Leverage</span><span class="v" id="tkLev">—</span></div>
+    <div class="row"><span class="k">Entry (live)</span><span class="v" id="tkPx">—</span></div>
+    <div class="row"><span class="k">Open fee</span><span class="v" id="tkFee">—</span></div>
+    <div class="row"><span class="k">Reserved from pool</span><span class="v" id="tkRes">—</span></div>
+    <div class="row"><span class="k">Est. liquidation</span><span class="v" id="tkLiq">—</span></div>
+    <div class="why" id="why6"></div>
+  </div>
+</section>
+
+<!-- 07 ── positions -->
+<section>
+  <div class="head"><span class="step" id="s7">07</span><h2>Open positions</h2></div>
+  <div class="how">Equity is margin plus profit, less funding and the close fee. When it falls to the maintenance level anyone can liquidate you and the remainder goes to the pool. Closing needs a live price, so a halted market traps a position until it reopens — margin can still be added to defend it.</div>
+  <div class="body"><div id="posList"><div class="row"><span class="k">—</span><span class="v">nothing open</span></div></div>
+    <div class="why" id="why7"></div></div>
+</section>
+
+<!-- 08 ── desk state -->
+<section>
+  <div class="head"><h2>Desk exposure</h2></div>
+  <div class="how">Skew is longs minus shorts. The pool is counterparty to everyone, so when longs outweigh shorts the pool is net short and collects funding from longs directly. Pool PnL is what the desk currently owes traders — it comes straight off the vault's net asset value.</div>
+  <div class="body"><div id="deskList"></div></div>
+</section>
+
+<!-- 09 ── admin -->
+<section>
+  <div class="head"><h2>Admin</h2></div>
+  <div class="how">Owner-only calls. These revert from any other wallet. Authorising a pusher is what lets the feeder publish prices — nothing trades until that is done and the feeder is running.</div>
+  <div class="body">
+    <div class="row"><span class="k">You are owner</span><span class="v" id="isOwner">—</span></div>
+    <div class="act">
+      <input id="pusherAddr" placeholder="feeder address">
+      <button id="btnPusher">Authorise pusher</button>
+    </div>
+    <div class="act">
+      <input id="fpId" placeholder="market id" inputmode="numeric" style="width:110px">
+      <input id="fpPx" placeholder="price" inputmode="decimal" style="width:150px">
+      <button id="btnForce" class="ghost">Force push</button>
+    </div>
+    <div class="hint">Force push skips the deviation breaker. For weekend reopens and nothing else.</div>
+    <div class="why" id="why9"></div>
+  </div>
+</section>
+
 <section>
   <div class="head"><h2>Activity</h2></div>
   <div class="body"><div id="log"><div>Ready. Connect a wallet to read chain state.</div></div></div>
@@ -222,6 +291,7 @@ const A = {
   engine : "0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
   chips  : "0x207A26e236520b41e98098dCd656D453CDA931d6",
   ballast: "0x5De190b7dd6eD5B53596859710E0De1d6613bD68",
+  floorplan:"0x7aF178595B59fF39cB2f2c37185171922a79677C",
 };
 const CHAIN = 5042002;
 const CHAIN_HEX = "0x4CEF52";                       // 5042002
@@ -232,7 +302,7 @@ const RPCS = [                                      // browser-safe only
   "https://5042002.rpc.thirdweb.com",
 ];
 const SCAN = "https://testnet.arcscan.app";
-const MKT = [{id:1,sym:"ETH"},{id:2,sym:"BTC"},{id:3,sym:"US30"}];
+const MKT = [{id:1,sym:"ETH",lev:50},{id:2,sym:"BTC",lev:50},{id:3,sym:"US30",lev:20}];
 const STATUS = ["OK","NOT LISTED","PAUSED","NO PRICE","STALE","MARKET CLOSED"];
 
 /* ─── abis ──────────────────────────────────────────────────────────── */
@@ -255,12 +325,29 @@ const BALLAST = [
   "function perp() view returns (address)",
   "function DEAD_SHARES() view returns (uint256)",
 ];
+const FLOOR = [
+  "function open(uint256,bool,uint256,uint256) returns (uint256)",
+  "function close(uint256)",
+  "function addMargin(uint256,uint256)",
+  "function liquidate(uint256)",
+  "function positionsOf(address) view returns (uint256[])",
+  "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)",
+  "function marketView(uint256) view returns (uint256 longSize,uint256 shortSize,int256 skew,int256 fundingHourly,int256 cumFunding,uint256 reserved,uint256 price,uint8 status)",
+  "function poolPnl() view returns (int256)",
+  "function maxProfitBps() view returns (uint256)",
+  "function minSize() view returns (uint256)",
+  "function openFeeBps() view returns (uint256)",
+  "function ballast() view returns (address)",
+];
 const ENGINE = [
   "function peek(uint256) view returns (uint256 value,uint64 updatedAt,uint64 roundId,uint8 s)",
   "function marketCount() view returns (uint256)",
   "function rejectedPushes(uint256) view returns (uint256)",
   "function pushPrices(uint256[],uint128[])",
   "function owner() view returns (address)",
+  "function isPusher(address) view returns (bool)",
+  "function setPusher(address,bool)",
+  "function forcePush(uint256,uint128)",
 ];
 
 /* ─── state ─────────────────────────────────────────────────────────── */
@@ -296,6 +383,7 @@ const C = {
   chips  : p => new E.Contract(A.chips,   ERC20,   p),
   ballast: p => new E.Contract(A.ballast, BALLAST, p),
   engine : p => new E.Contract(A.engine,  ENGINE,  p),
+  floor  : p => new E.Contract(A.floorplan, FLOOR, p),
 };
 
 /* ─── tape ──────────────────────────────────────────────────────────── */
@@ -327,6 +415,7 @@ async function refresh(){
       rej += await en.rejectedPushes(m.id);
       const age = Number(updatedAt)===0 ? "never pushed"
                 : `${now-Number(updatedAt)}s ago`;
+      lastPx[m.id] = value; lastStatus[m.id] = Number(s);
       rows.push({ sym:m.sym, s:Number(s), age,
         px: Number(value)===0 ? "—" : "$"+fmt(value,18,2) });
     }
@@ -367,6 +456,20 @@ async function refresh(){
     else if (st[3]>0n) say("why4","Reserved capital is committed to open positions and cannot be withdrawn until they close.","");
     else say("why4","","");
   }catch(e){ log("Vault read failed: "+(e.shortMessage||e.message)); }
+
+  /* perp */
+  try { await paintDesk(p); await paintPositions(p); quote(); }
+  catch(e){ log("Desk read failed: "+(e.shortMessage||e.message)); }
+
+  /* owner */
+  if (me){
+    try {
+      const o = await C.engine(p).owner();
+      const isO = o.toLowerCase() === me.toLowerCase();
+      $("isOwner").textContent = isO ? "yes" : "no — these calls will revert";
+      $("isOwner").className = "v " + (isO ? "ok" : "warn");
+    } catch(e){}
+  }
 
   /* chips */
   if (me){
@@ -489,10 +592,160 @@ $("btnPush").onclick = () => {
   send(()=>C.engine(signer).pushPrices(ids, vals), "Push "+ids.length+" price(s)", "why5");
 };
 
+
+/* ─── ticket ────────────────────────────────────────────────────────── */
+$("tkMkt").innerHTML = MKT.map(m=>`<option value="${m.id}">${m.sym}</option>`).join("");
+
+let lastPx = {};                       // marketId -> 18dec price
+let lastStatus = {};
+
+function quote(){
+  const id   = Number($("tkMkt").value);
+  const side = $("tkSide").value === "long";
+  const size = Number($("tkSize").value||0);
+  const marg = Number($("tkMargin").value||0);
+  const meta = MKT.find(m=>m.id===id);
+
+  const fee  = size * 10 / 10000;            // openFeeBps default 10
+  const net  = marg - fee;
+  const lev  = net > 0 ? size/net : 0;
+
+  $("tkFee").textContent = fee.toFixed(2)+" CHIP";
+  $("tkRes").textContent = (size*0.5).toFixed(2)+" CHIP  (50% of size)";
+  $("tkLev").textContent = net>0 ? lev.toFixed(1)+"x  (max "+meta.lev+"x)" : "—";
+  $("tkLev").className   = "v " + (lev>meta.lev ? "bad" : "");
+
+  const px = lastPx[id] ? Number(E.formatUnits(lastPx[id],18)) : 0;
+  $("tkPx").textContent = px ? "$"+px.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : "no price";
+
+  if (px && net>0 && size>0){
+    // equity hits maintenance (1% of size) after this much adverse move
+    const room = net - size*0.001 - size*0.01;       // close fee + maintenance
+    const move = room * px / size;
+    const liq  = side ? px - move : px + move;
+    $("tkLiq").textContent = liq>0 ? "$"+liq.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : "immediate";
+  } else $("tkLiq").textContent = "—";
+
+  let msg = "", kind = "";
+  if (lastStatus[id] !== 0){ msg = `${meta.sym} is ${STATUS[lastStatus[id]] ?? "unavailable"} — opening will revert until it is live.`; kind="err"; }
+  else if (size < 10) { msg = "Minimum size is 10 CHIP."; kind="err"; }
+  else if (lev > meta.lev){ msg = `${lev.toFixed(1)}x exceeds the ${meta.lev}x cap on ${meta.sym}. Post more margin or cut size.`; kind="err"; }
+  else if (net <= 0){ msg = "Margin must exceed the open fee."; kind="err"; }
+  say("why6", msg, kind);
+  $("btnOpen").disabled = !!msg;
+}
+["tkMkt","tkSide","tkSize","tkMargin"].forEach(id=>{
+  $(id).addEventListener("input", quote); $(id).addEventListener("change", quote);
+});
+
+$("btnOpen").onclick = async () => {
+  if (needWallet("why6")) return;
+  const id = Number($("tkMkt").value);
+  const isLong = $("tkSide").value === "long";
+  const size = E.parseUnits(($("tkSize").value||"0").trim(),6);
+  const marg = E.parseUnits(($("tkMargin").value||"0").trim(),6);
+  const c = C.chips(signer);
+  const bal = await c.balanceOf(me);
+  if (bal < marg){ say("why6",`Only ${fmt(bal,6)} CHIP on hand for ${fmt(marg,6)} of margin.`,"err"); return; }
+  const al = await c.allowance(me, A.floorplan);
+  if (al < marg) await send(()=>c.approve(A.floorplan, marg), "Approve margin", "why6");
+  await send(()=>C.floor(signer).open(id, isLong, size, marg), "Open position", "why6");
+};
+
+/* ─── positions ─────────────────────────────────────────────────────── */
+async function paintPositions(p){
+  if (!me){ $("posList").innerHTML = '<div class="row"><span class="k">—</span><span class="v">connect a wallet</span></div>'; return; }
+  const f = C.floor(p);
+  let ids = [];
+  try { ids = await f.positionsOf(me); } catch(e){ return; }
+
+  const cards = [];
+  for (const idB of ids){
+    let v;
+    try { v = await f.positionView(idB); } catch(e){ continue; }
+    const pos = v[0];
+    if (pos.owner === E.ZeroAddress) continue;      // closed
+    const sym = (MKT.find(m=>m.id===Number(pos.marketId))||{}).sym || pos.marketId;
+    const pnl = v[2], eq = v[4], liq = v[6], danger = v[7];
+    const px  = v[1];
+    const pnlPct = pos.margin>0n ? Number(pnl)*100/Number(pos.margin) : 0;
+    cards.push(`<div class="pos ${danger?'danger':''}">
+      ${danger?'<div class="warnbar">Below maintenance — this position can be liquidated by anyone right now.</div>':''}
+      <div class="top">
+        <span><span class="tag ${pos.isLong?'long':'short'}">${pos.isLong?'LONG':'SHORT'}</span> ${sym} #${idB}</span>
+        <span class="${Number(pnl)>=0?'v ok':'v bad'}">${Number(pnl)>=0?'+':''}${fmt(pnl<0n?-pnl:pnl,6)} CHIP ${Number(pnl)<0?'loss':'profit'} (${pnlPct.toFixed(1)}%)</span>
+      </div>
+      <div class="row"><span class="k">Size / margin</span><span class="v">${fmt(pos.size,6)} / ${fmt(pos.margin,6)}</span></div>
+      <div class="row"><span class="k">Entry / mark</span><span class="v">${fmt(pos.entryPrice,18)} → ${fmt(px,18)}</span></div>
+      <div class="row"><span class="k">Funding paid</span><span class="v">${Number(v[3])>=0?'':'-'}${fmt(v[3]<0n?-v[3]:v[3],6)}</span></div>
+      <div class="row"><span class="k">Equity / maintenance</span><span class="v">${fmt(eq<0n?0n:eq,6)} / ${fmt(v[5],6)}</span></div>
+      <div class="row"><span class="k">Liquidation price</span><span class="v ${danger?'bad':'warn'}">${fmt(liq,18)}</span></div>
+      <div class="act">
+        <button data-close="${idB}">Close</button>
+        <button data-add="${idB}" class="ghost">Add 50 margin</button>
+      </div>
+    </div>`);
+  }
+  $("posList").innerHTML = cards.length ? cards.join("")
+    : '<div class="row"><span class="k">—</span><span class="v">nothing open</span></div>';
+
+  $("posList").querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>{
+    if (needWallet("why7")) return;
+    send(()=>C.floor(signer).close(b.dataset.close), "Close position #"+b.dataset.close, "why7");
+  });
+  $("posList").querySelectorAll("[data-add]").forEach(b=>b.onclick=async ()=>{
+    if (needWallet("why7")) return;
+    const amt = E.parseUnits("50",6);
+    const c = C.chips(signer);
+    if ((await c.allowance(me,A.floorplan)) < amt)
+      await send(()=>c.approve(A.floorplan, amt), "Approve margin", "why7");
+    await send(()=>C.floor(signer).addMargin(b.dataset.add, amt), "Add margin", "why7");
+  });
+}
+
+/* ─── desk exposure ─────────────────────────────────────────────────── */
+async function paintDesk(p){
+  const f = C.floor(p);
+  const rows = [];
+  let owed = 0n;
+  try { owed = await f.poolPnl(); } catch(e){}
+  for (const m of MKT){
+    let v; try { v = await f.marketView(m.id); } catch(e){ continue; }
+    const L = v[0], S = v[1], skew = v[2], fh = v[3];
+    if (L===0n && S===0n){
+      rows.push(`<div class="row"><span class="k">${m.sym}</span><span class="v">no open interest</span></div>`);
+      continue;
+    }
+    const rate = Number(E.formatUnits(fh,18))*100;
+    rows.push(`<div class="row"><span class="k">${m.sym} long / short</span><span class="v">${fmt(L,6)} / ${fmt(S,6)}</span></div>`
+      + `<div class="row"><span class="k">${m.sym} funding</span><span class="v">${rate>=0?'longs pay':'pool pays longs'} ${Math.abs(rate).toFixed(4)}%/hr</span></div>`);
+  }
+  const sign = owed >= 0n;
+  rows.push(`<div class="row"><span class="k">Pool owes traders</span><span class="v ${sign&&owed>0n?'bad':'ok'}">${sign?'':'-'}${fmt(owed<0n?-owed:owed,6)} CHIP</span></div>`);
+  $("deskList").innerHTML = rows.join("");
+}
+
+/* ─── admin ─────────────────────────────────────────────────────────── */
+$("btnPusher").onclick = () => {
+  if (needWallet("why9")) return;
+  const a = ($("pusherAddr").value||"").trim();
+  if (!E.isAddress(a)){ say("why9","That is not a valid address.","err"); return; }
+  send(()=>C.engine(signer).setPusher(a, true), "Authorise pusher", "why9");
+};
+$("btnForce").onclick = () => {
+  if (needWallet("why9")) return;
+  const id = Number($("fpId").value||0);
+  const px = ($("fpPx").value||"").trim();
+  if (!id || !px){ say("why9","Market id and price are both required.","err"); return; }
+  send(()=>C.engine(signer).forcePush(id, E.parseUnits(px,18)), "Force push market "+id, "why9");
+};
+
 /* ─── boot ──────────────────────────────────────────────────────────── */
 $("aChips").textContent   = short(A.chips);
 $("aBallast").textContent = short(A.ballast);
 $("aEngine").textContent  = short(A.engine);
+$("aFloor").textContent   = short(A.floorplan);
+quote();
 refresh();
 setInterval(refresh, 15000);
 if (window.ethereum){

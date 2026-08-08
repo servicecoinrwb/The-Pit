@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Pit — portfolio</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"> 
+<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -122,7 +122,7 @@ let scannedTo=0, historyLoaded=false;
    from the middle of that record. Cache what has been read and only scan
    forward from there, so history accumulates instead of being re-derived
    (badly) on every load. */
-const PKEY="pit.portfolio.v1";
+const PKEY="pit.portfolio.v2";
 function cacheKey(){ return PKEY+":"+A.floorplan+":"+(me||"").toLowerCase(); }
 function loadP(){
   try{
@@ -215,12 +215,17 @@ async function loadHistory(p){
   for(const l of cl){ try{
     const d=iFloor.parseLog(l); if(!d) continue;
     const id=d.args[0].toString(), o=opens.get(id); if(!o) continue;
+    // Indexed parameters still occupy slots in args, so `trader` sits at [1]
+    // and every value after it shifts. Reading exit from [1] yields the
+    // trader's address as an integer, which is how a price ended up reading
+    // in the hundreds of octillions.
+    //   [0] id  [1] trader  [2] exitPrice  [3] pnl  [4] funding  [5] fee  [6] returned
     const ret=d.args[6];
     // Everything the trade cost: margin kept by the engine plus the fee
     // taken at open. Anything less coming back is a loss.
     const inAmt=o.margin+o.openFee;
     out.push({id,kind:"closed",market:o.market,isLong:o.isLong,size:o.size,
-      margin:o.margin,entry:o.entry,exit:d.args[1],pnl:d.args[2],funding:d.args[3],
+      margin:o.margin,entry:o.entry,exit:d.args[2],pnl:d.args[3],funding:d.args[4],
       fees:o.openFee+d.args[5],returned:ret,net:ret-inAmt,block:l.blockNumber});
   }catch{} }
 
@@ -295,6 +300,7 @@ function drawCurve(){
 /* ── summary ──────────────────────────────────────────────────────── */
 function paintStats(){
   const net=trades.reduce((s,t)=>s+Number(E.formatUnits(t.net,6)),0);
+  const gross=trades.reduce((s,t)=>s+Number(E.formatUnits(t.pnl,6)),0);
   const fees=trades.reduce((s,t)=>s+Number(E.formatUnits(t.fees,6)),0);
   const fund=trades.reduce((s,t)=>s+Number(E.formatUnits(t.funding,6)),0);
   const wins=trades.filter(t=>t.net>0n).length;
@@ -306,13 +312,15 @@ function paintStats(){
   $("stats").innerHTML=`
     <div class="stat"><span class="k">Realized net</span>
       <span class="v ${net>=0?"ok":"bad"}">${sgn(net)}</span>
-      <span class="s">across ${trades.length} closed trade${trades.length===1?"":"s"}</span></div>
+      <span class="s">${trades.length
+        ? sgn(gross)+" on price, less costs"
+        : "no closed trades yet"}</span></div>
     <div class="stat"><span class="k">Win rate</span>
       <span class="v">${trades.length?wr.toFixed(0)+"%":"—"}</span>
       <span class="s">${wins} up · ${trades.length-wins} down</span></div>
     <div class="stat"><span class="k">Fees paid</span>
       <span class="v">${money(fees)}</span>
-      <span class="s">open + close, to the pool</span></div>
+      <span class="s">0.1% each way on size, not margin</span></div>
     <div class="stat"><span class="k">Funding</span>
       <span class="v ${fund<=0?"ok":"bad"}">${fund===0?"0.00":sgn(-fund)}</span>
       <span class="s">${fund>0?"you paid the pool":"the pool paid you"}</span></div>
@@ -336,12 +344,13 @@ function paintTrades(){
     <td>${n2(t.size,6,0)}</td>
     <td>${n2(t.entry,18)}</td>
     <td>${n2(t.exit,18)}</td>
+    <td class="${t.pnl>=0n?"ok":"bad"}">${t.pnl>=0n?"+":"-"}${n2(t.pnl<0n?-t.pnl:t.pnl,6)}</td>
     <td>${n2(t.fees,6)}</td>
     <td>${Number(t.funding)===0?"0.00":(t.funding>0n?"-":"+")+n2(t.funding<0n?-t.funding:t.funding,6)}</td>
     <td class="${t.net>=0n?"ok":"bad"}">${t.net>=0n?"+":"-"}${n2(t.net<0n?-t.net:t.net,6)}</td>
     <td><a href="${SCAN}/address/${A.floorplan}" target="_blank" rel="noopener" style="color:var(--sky)">#${t.id}</a></td></tr>`).join("");
   $("tabTrades").innerHTML=`<table><thead><tr><th>Market</th><th>Size</th><th>Entry</th><th>Exit</th>
-    <th>Fees</th><th>Funding</th><th>Net</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    <th>Price PnL</th><th>Fees</th><th>Funding</th><th>Net</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function paintOpen(){

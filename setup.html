@@ -203,6 +203,20 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
       <input id="depAmt" value="300000" inputmode="decimal">
       <button id="btnDeposit">Approve &amp; deposit</button>
     </div>
+
+    <div style="border-top:1px solid var(--edge);margin-top:15px;padding-top:13px">
+      <div class="row"><span class="k">Your position is worth</span><span class="v" id="myVal">—</span></div>
+      <div class="row"><span class="k">Withdrawable right now</span><span class="v" id="myMax">—</span></div>
+      <div class="act">
+        <input id="wdAmt" placeholder="amount in CHIP" inputmode="decimal">
+        <button id="btnWithdraw" class="ghost">Withdraw</button>
+        <button id="btnExit" class="ghost">Withdraw all</button>
+      </div>
+      <div class="hint">Withdrawals are capped by idle capital, not by what your shares are worth.
+        Money reserved against open positions belongs to those positions until they close — a winning
+        trader has to be payable from something, and that something cannot also have been withdrawn.</div>
+      <div class="why" id="whyW"></div>
+    </div>
     <div class="why" id="why4"></div>
   </div>
 </section>
@@ -352,6 +366,11 @@ const BALLAST = [
   "function initialised() view returns (bool)",
   "function initialise(uint256)",
   "function deposit(uint256,address) returns (uint256)",
+  "function withdraw(uint256,address,address) returns (uint256)",
+  "function redeem(uint256,address,address) returns (uint256)",
+  "function maxWithdraw(address) view returns (uint256)",
+  "function maxRedeem(address) view returns (uint256)",
+  "function convertToAssets(uint256) view returns (uint256)",
   "function balanceOf(address) view returns (uint256)",
   "function decimals() view returns (uint8)",
   "function owner() view returns (address)",
@@ -497,6 +516,17 @@ async function refresh(){
     if (me){
       const sh = await b.balanceOf(me);
       $("bShares").textContent = fmt(sh,vDec,4)+" BLST";
+      try{
+        const worth = sh>0n ? await b.convertToAssets(sh) : 0n;
+        const cap   = await b.maxWithdraw(me);
+        $("myVal").textContent = fmt(worth,6)+" CHIP";
+        $("myMax").textContent = fmt(cap,6)+" CHIP";
+        $("myMax").className   = "v " + (cap < worth ? "warn" : "");
+        if (sh===0n) say("whyW","You have no shares in the pool.","");
+        else if (cap < worth)
+          say("whyW",`${fmt(worth-cap,6)} CHIP of your position is backing open positions and cannot be withdrawn until they close.`,"");
+        else say("whyW","","");
+      }catch(e){}
       $("s4").className = "step " + (sh>0n ? "done" : (ready?"now":""));
     }
     if (!init) say("why4","Seed the vault first. Deposits revert until the locked shares exist.","");
@@ -644,6 +674,30 @@ $("btnDeposit").onclick = async () => {
     await send(()=>c.approve(A.ballast, amt), "Approve "+$("depAmt").value+" Chips", "why4");
   }
   await send(()=>C.ballast(signer).deposit(amt, me), "Deposit into Ballast", "why4");
+};
+
+$("btnWithdraw").onclick = async () => {
+  if (needWallet("whyW")) return;
+  const raw = ($("wdAmt").value||"").trim();
+  if (!raw){ say("whyW","Enter an amount.","err"); return; }
+  const amt = E.parseUnits(raw, 6);
+  const b = C.ballast(signer);
+  const cap = await b.maxWithdraw(me);
+  if (amt > cap){
+    say("whyW",`Only ${fmt(cap,6)} CHIP is withdrawable — the rest is reserved against open positions.`,"err");
+    return;
+  }
+  await send(()=>b.withdraw(amt, me, me), "Withdraw "+raw+" CHIP", "whyW");
+};
+
+$("btnExit").onclick = async () => {
+  if (needWallet("whyW")) return;
+  const b = C.ballast(signer);
+  // Redeem by shares rather than assets so the last exit cannot leave a
+  // dust remainder behind from rounding between the two.
+  const shares = await b.maxRedeem(me);
+  if (shares === 0n){ say("whyW","Nothing withdrawable right now.","err"); return; }
+  await send(()=>b.redeem(shares, me, me), "Withdraw everything available", "whyW");
 };
 
 $("btnPush").onclick = () => {

@@ -79,7 +79,13 @@ button,select,input{font-family:inherit}
 .rsig{stroke:var(--edge);stroke-width:.7;opacity:.6}
 .draw{stroke:var(--sky);stroke-width:1.2}
 .draw.h{stroke-dasharray:5 4}
-#chart svg{cursor:crosshair}
+#chart svg{cursor:grab}
+#chart svg.armed{cursor:crosshair}
+#chart svg.panning{cursor:grabbing}
+.livebtn{position:absolute;right:74px;bottom:30px;background:var(--sky);color:var(--ink);
+         border:0;border-radius:2px;padding:5px 11px;font:600 11px "IBM Plex Sans Condensed",sans-serif;
+         letter-spacing:.07em;text-transform:uppercase;cursor:pointer;z-index:2}
+#chart{position:relative}
 #thin{padding:6px 12px;font-size:11.5px;color:var(--mute);line-height:1.5}
 #chart{height:min(56vh,430px)}
 #chart svg{width:100%;height:100%;display:block;touch-action:none}
@@ -265,6 +271,12 @@ const BAL=["function stats() view returns (uint256,uint256,uint256,uint256,uint2
 /* ── state ────────────────────────────────────────────────────────── */
 let provider, signer, me, read;
 let cur=1, side="long", tf=300, hoverIdx=null;
+/* View window over the candle array. `span` is how many are visible and
+   `offset` is how far back from the newest the right edge sits. Offset zero
+   means pinned to live, which is where it returns whenever the timeframe or
+   market changes — an old window on a new series would be meaningless. */
+let span=110, offset=0, panFrom=null;
+const SPAN_MIN=20, SPAN_MAX=400;
 const series={1:[],2:[],3:[]}, px={}, stat={}, mstate={};
 let loaded=false, pool=null, poolOwed=null, lastBlock=0, saveTick=0;
 
@@ -307,7 +319,7 @@ function candles(id, secs){
     else { b.h=Math.max(b.h,d.p); b.l=Math.min(b.l,d.p); b.c=d.p; b.n++; }
   }
   if(b)out.push(b);
-  return out.slice(-110);
+  return out;
 }
 
 /* ── indicator maths ──────────────────────────────────────────────────
@@ -355,6 +367,7 @@ function setMode(m){
   pending=null;
   document.querySelectorAll("[data-draw]").forEach(b=>
     b.classList.toggle("on", b.dataset.draw===drawMode));
+  const sv=$("svg"); if(sv) sv.className.baseVal = drawMode ? "armed" : "";
   $("drawhint").textContent =
     drawMode==="h" ? "Click the chart to place a price level" :
     drawMode==="t" ? "Click two points to draw a trendline" :
@@ -362,7 +375,17 @@ function setMode(m){
 }
 
 function drawChart(){
-  const cs=candles(cur,tf), box=$("chart"), sym=MKT.find(m=>m.id===cur).sym;
+  const all=candles(cur,tf), box=$("chart"), sym=MKT.find(m=>m.id===cur).sym;
+
+  // Clamp the window to what exists. Panning past either end should stop at
+  // the end rather than scroll into emptiness.
+  const maxOff=Math.max(0, all.length-span);
+  if(offset>maxOff) offset=maxOff;
+  if(offset<0) offset=0;
+  const end=all.length-offset;
+  const cs=all.slice(Math.max(0,end-span), end);
+  const atLive = offset===0;
+
   if(cs.length<2){
     box.innerHTML=`<div class="empty">Not enough prints yet for ${sym} at this timeframe.<br>
       The chart builds from the engine's own price pushes — try a shorter timeframe,
@@ -370,8 +393,8 @@ function drawChart(){
     $("ohlc").textContent=""; $("thin").textContent=""; return;
   }
   const hist=(series[cur]||[]);
-  $("thin").textContent = cs.length < 12
-    ? `Only ${cs.length} candles at this timeframe — the feeder has about `
+  $("thin").textContent = all.length < 12
+    ? `Only ${all.length} candles at this timeframe — the feeder has about `
       + dur(hist.length ? hist[hist.length-1].t - hist[0].t : 0)
       + ` of history so far. Shorter timeframes show more detail until it builds up.`
     : "";
@@ -496,7 +519,9 @@ function drawChart(){
     if(last!==undefined) rstr+=`<text class="ax" x="${(X0+4).toFixed(1)}" y="${(rsiTop+11).toFixed(1)}">RSI 14 · ${last.toFixed(1)}</text>`;
   }
 
-  const mark=cs[cs.length-1].c, my=Y(mark);
+  // The rightmost candle of a scrolled-back window is history, not the mark.
+  const mark=atLive ? cs[cs.length-1].c : all[all.length-1].c;
+  const my=Y(mark);
   let cross="";
   if(hoverIdx!==null&&cs[hoverIdx]) cross=`<line class="cross" x1="${X(hoverIdx).toFixed(1)}" y1="${PT}" x2="${X(hoverIdx).toFixed(1)}" y2="${(H-PB).toFixed(1)}"/>`;
   if(pending) cross+=`<circle cx="${xForT(pending.t).toFixed(1)}" cy="${Y(pending.p).toFixed(1)}" r="3" fill="var(--sky)"/>`;
@@ -507,18 +532,61 @@ function drawChart(){
     <line class="markline" x1="${X0.toFixed(1)}" y1="${my.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${my.toFixed(1)}"/>
     <rect class="marktag" x="${W-PR+2}" y="${(my-8).toFixed(1)}" width="60" height="16" rx="2"/>
     <text class="marktxt" x="${W-PR+6}" y="${(my+4).toFixed(1)}">${money(mark)}</text>
-  </svg>`;
+  </svg>` + (atLive ? "" : '<button class="livebtn" id="toLive">Back to live</button>');
+  if(!atLive){
+    const b=$("toLive"); if(b) b.onclick=()=>{ offset=0; drawChart(); };
+  }
 
   const svg=$("svg");
   const local=ev=>{ const r=svg.getBoundingClientRect();
     return {x:(ev.clientX-r.left)/r.width*W, y:(ev.clientY-r.top)/r.height*H}; };
 
+  svg.className.baseVal = drawMode ? "armed" : "";
+
+  svg.onpointerdown=ev=>{
+    if(drawMode) return;                       // a draw tool owns the click
+    panFrom={x:ev.clientX, off:offset};
+    svg.className.baseVal="panning";
+    svg.setPointerCapture?.(ev.pointerId);
+  };
+  svg.onpointerup=ev=>{
+    panFrom=null;
+    svg.className.baseVal = drawMode ? "armed" : "";
+    svg.releasePointerCapture?.(ev.pointerId);
+  };
+
   svg.onpointermove=ev=>{
+    if(panFrom){
+      // Convert pixels dragged into candles scrolled, so panning feels the
+      // same whatever the zoom level.
+      const r=svg.getBoundingClientRect();
+      const dx=(ev.clientX-panFrom.x)/r.width*W;
+      offset=Math.round(panFrom.off + dx/cw);
+      drawChart();
+      return;
+    }
     const {x}=local(ev);
     const i=Math.round((x-X0-cw/2)/cw);
     hoverIdx=Math.max(0,Math.min(cs.length-1,i)); showOHLC(cs[hoverIdx]); drawChart();
   };
-  svg.onpointerleave=()=>{hoverIdx=null;showOHLC(cs[cs.length-1]);drawChart();};
+  svg.onpointerleave=()=>{
+    if(panFrom){ panFrom=null; svg.className.baseVal = drawMode?"armed":""; }
+    hoverIdx=null; showOHLC(cs[cs.length-1]); drawChart();
+  };
+
+  // Wheel zooms about the cursor, so the candle under the pointer stays put.
+  svg.onwheel=ev=>{
+    ev.preventDefault();
+    const r=svg.getBoundingClientRect();
+    const frac=Math.min(1,Math.max(0,(ev.clientX-r.left)/r.width));
+    const before=span;
+    span=Math.round(span * (ev.deltaY>0 ? 1.18 : 1/1.18));
+    span=Math.max(SPAN_MIN, Math.min(SPAN_MAX, span));
+    // Keep the point under the cursor anchored as the window resizes.
+    offset=Math.max(0, Math.round(offset + (before-span)*(1-frac)));
+    drawChart();
+  };
+  svg.ondblclick=()=>{ offset=0; drawChart(); };
 
   svg.onclick=ev=>{
     if(!drawMode) return;
@@ -553,7 +621,9 @@ function drawChart(){
 function showOHLC(c){
   if(!c){$("ohlc").textContent="";return;}
   const up=c.c>=c.o, cls=up?"ok":"bad";
-  $("ohlc").innerHTML=`O <b>${money(c.o)}</b> H <b>${money(c.h)}</b> `+
+  const stamp=new Date(c.t*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  $("ohlc").innerHTML=`<span style="color:var(--mute)">${stamp}</span> `+
+    `O <b>${money(c.o)}</b> H <b>${money(c.h)}</b> `+
     `L <b>${money(c.l)}</b> C <b class="${cls}">${money(c.c)}</b> `+
     `· ${c.n} print${c.n>1?"s":""}`;
 }
@@ -678,7 +748,7 @@ function paintMkts(){
       <span class="st ${cls}">${STATUS[s]??"—"}</span></button>`;
   }).join("");
   $("mkts").querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{
-    cur=Number(b.dataset.m); hoverIdx=null; paintMkts(); drawChart(); quote(); paintStats();
+    cur=Number(b.dataset.m); hoverIdx=null; offset=0; paintMkts(); drawChart(); quote(); paintStats();
   });
 }
 
@@ -708,7 +778,7 @@ function paintStats(){
 /* ── ticket ───────────────────────────────────────────────────────── */
 $("tfs").innerHTML=TFS.map(t=>`<button class="tf${t.s===tf?" on":""}" data-tf="${t.s}">${t.k}</button>`).join("");
 $("tfs").querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{
-  tf=Number(b.dataset.tf); hoverIdx=null;
+  tf=Number(b.dataset.tf); hoverIdx=null; offset=0;
   $("tfs").querySelectorAll(".tf").forEach(x=>x.className="tf"+(Number(x.dataset.tf)===tf?" on":""));
   drawChart();
 });

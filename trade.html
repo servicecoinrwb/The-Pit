@@ -850,11 +850,18 @@ async function send(fn,label){
   }catch(e){const m=e.shortMessage||e.reason||e.message||"failed";note(m,"err");log(label+" failed: "+m);}
 }
 
-$("btnConnect").onclick=async()=>{
-  if(!window.ethereum){note("No wallet found.","err");return;}
+/* eth_accounts returns an already-authorised address without a prompt, so
+   a wallet approved once on this origin reconnects on every page silently.
+   eth_requestAccounts is only for the first time, when a prompt is right. */
+async function connect(prompt){
+  if(!window.ethereum){ if(prompt) note("No wallet found.","err"); return; }
   try{
     provider=new E.BrowserProvider(window.ethereum);
-    await provider.send("eth_requestAccounts",[]);
+    const have=await provider.send("eth_accounts",[]);
+    if(!have.length){
+      if(!prompt) return;                 // silent attempt, nothing authorised yet
+      await provider.send("eth_requestAccounts",[]);
+    }
     if(Number((await provider.getNetwork()).chainId)!==CHAIN){
       try{ await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN_HEX}]}); }
       catch(sw){ if(sw.code===4902) await window.ethereum.request({method:"wallet_addEthereumChain",params:[{
@@ -866,8 +873,9 @@ $("btnConnect").onclick=async()=>{
     signer=await provider.getSigner(); me=await signer.getAddress();
     $("dot").className="dot on"; $("who").textContent=short(me);
     log("Connected "+short(me)); refresh();
-  }catch(e){ note(e.shortMessage||e.message,"err"); }
-};
+  }catch(e){ if(prompt) note(e.shortMessage||e.message,"err"); }
+}
+$("btnConnect").onclick=()=>connect(true);
 
 $("btnGo").onclick=async()=>{
   if(!signer){note("Connect a wallet first.","err");return;}
@@ -888,7 +896,7 @@ document.querySelectorAll("[data-ind]").forEach(b=>b.onclick=()=>{
 document.querySelectorAll("[data-draw]").forEach(b=>b.onclick=()=>setMode(b.dataset.draw));
 $("clrAll").onclick=()=>{ draws[cur]=[]; saveDraws(); setMode(null); drawChart(); };
 
-paintMkts(); refresh(); setInterval(refresh,15000);
+paintMkts(); connect(false); refresh(); setInterval(refresh,15000);
 let rz; addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(drawChart,150); });
 if(window.ethereum){
   window.ethereum.on?.("accountsChanged",()=>location.reload());

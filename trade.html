@@ -63,6 +63,7 @@ button,select,input{font-family:inherit}
 .ohlc{font-size:11.5px;color:var(--mute);font-variant-numeric:tabular-nums}
 .ohlc b{color:var(--paper);font-weight:500}
 #chart{padding:6px 8px 0}
+#thin{padding:6px 12px;font-size:11.5px;color:var(--mute);line-height:1.5}
 #chart{height:min(56vh,430px)}
 #chart svg{width:100%;height:100%;display:block;touch-action:none}
 .gl{stroke:var(--edge);stroke-width:.7;opacity:.55}
@@ -154,6 +155,7 @@ tr.danger td{background:rgba(181,81,47,.11)}
       <div class="tfs" id="tfs"></div>
       <div class="ohlc" id="ohlc"></div>
     </div>
+    <div id="thin"></div>
     <div id="chart"></div>
   </div>
 
@@ -277,16 +279,16 @@ function drawChart(){
     box.innerHTML=`<div class="empty">Not enough prints yet for ${sym} at this timeframe.<br>
       The chart builds from the engine's own price pushes — try a shorter timeframe,
       or wait for the feeder to publish a few more.</div>`;
-    $("ohlc").textContent=""; return;
+    $("ohlc").textContent=""; $("thin").textContent=""; return;
   }
   // Thin history is worth saying out loud. This desk is hours old, so the
   // longer timeframes genuinely cannot fill yet — that is a young feed, not
   // a broken chart, and a reader should be told which.
-  const thin = cs.length < 12
-    ? `<div style="padding:7px 10px;font-size:11.5px;color:var(--mute)">
-        Only ${cs.length} candles at this timeframe — the feeder has about
-        ${dur((series[cur]||[]).length ? series[cur][series[cur].length-1].t - series[cur][0].t : 0)}
-        of history so far. Shorter timeframes will show more detail until it builds up.</div>`
+  const hist=(series[cur]||[]);
+  $("thin").textContent = cs.length < 12
+    ? `Only ${cs.length} candles at this timeframe — the feeder has about `
+      + dur(hist.length ? hist[hist.length-1].t - hist[0].t : 0)
+      + ` of history so far. Shorter timeframes show more detail until it builds up.`
     : "";
   // Match the viewBox to the element's real pixel size. With a fixed
   // viewBox and preserveAspectRatio="none" a wide monitor stretches every
@@ -306,13 +308,18 @@ function drawChart(){
   const full=W-PL-PR;
   const cw=Math.min(full/cs.length, IDEAL*2.2);
   const plotW=cw*cs.length;
+  // Newest candle sits at the right edge and history runs back to the left,
+  // which is where a reader's eye already expects the live price to be. A
+  // short series leaves the gap on the left rather than stranding the
+  // candles away from the price axis.
+  const X0=PL+(full-plotW);
   const bw=Math.max(1.5, Math.min(cw*GAP, 34));
-  const X=i=>PL+i*cw+cw/2;
+  const X=i=>X0+i*cw+cw/2;
 
   let grid="",bodies="";
   for(let i=0;i<=4;i++){
     const v=lo+(hi-lo)*i/4,y=Y(v);
-    grid+=`<line class="gl" x1="${PL}" y1="${y.toFixed(1)}" x2="${(PL+plotW).toFixed(1)}" y2="${y.toFixed(1)}"/>`+
+    grid+=`<line class="gl" x1="${X0.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${y.toFixed(1)}"/>`+
           `<text class="ax" x="${W-PR+6}" y="${(y+3.5).toFixed(1)}">${money(v)}</text>`;
   }
   const step=Math.max(1,Math.floor(cs.length/5));
@@ -335,10 +342,10 @@ function drawChart(){
     cross=`<line class="cross" x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${H-PB}"/>`;
   }
 
-  box.innerHTML=thin+`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="svg"
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="svg"
       role="img" aria-label="${sym} candlestick chart">
     ${grid}${bodies}${cross}
-    <line class="markline" x1="${PL}" y1="${my.toFixed(1)}" x2="${W-PR}" y2="${my.toFixed(1)}"/>
+    <line class="markline" x1="${X0.toFixed(1)}" y1="${my.toFixed(1)}" x2="${W-PR}" y2="${my.toFixed(1)}"/>
     <rect class="marktag" x="${W-PR+2}" y="${(my-8).toFixed(1)}" width="60" height="16" rx="2"/>
     <text class="marktxt" x="${W-PR+6}" y="${(my+4).toFixed(1)}">${money(mark)}</text>
   </svg>`;

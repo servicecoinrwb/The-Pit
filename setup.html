@@ -511,11 +511,15 @@ async function refresh(){
 }
 
 /* ─── wallet ────────────────────────────────────────────────────────── */
-async function connect(){
-  if (!window.ethereum){ say("why1","No wallet found. This page needs MetaMask or another injected wallet.","err"); return; }
+async function connect(prompt=true){
+  if (!window.ethereum){ if(prompt) say("why1","No wallet found. This page needs MetaMask or another injected wallet.","err"); return; }
   try{
     provider = new E.BrowserProvider(window.ethereum);
-    await provider.send("eth_requestAccounts",[]);
+    const have = await provider.send("eth_accounts",[]);
+    if (!have.length){
+      if (!prompt) return;
+      await provider.send("eth_requestAccounts",[]);
+    }
     const net = await provider.getNetwork();
     if (Number(net.chainId) !== CHAIN){
       try{
@@ -542,7 +546,7 @@ async function connect(){
     say("why1","","");
     log("Connected "+short(me));
     refresh();
-  }catch(e){ say("why1", e.shortMessage||e.message, "err"); }
+  }catch(e){ if(prompt) say("why1", e.shortMessage||e.message, "err"); }
 }
 
 function needWallet(w){
@@ -567,7 +571,7 @@ async function send(fn, label, whyId){
 }
 
 /* ─── actions ───────────────────────────────────────────────────────── */
-$("btnConnect").onclick = connect;
+$("btnConnect").onclick = () => connect(true);
 
 $("btnFaucet").onclick = () => {
   if (needWallet("why2")) return;
@@ -893,6 +897,7 @@ $("aBallast").textContent = short(A.ballast);
 $("aEngine").textContent  = short(A.engine);
 $("aFloor").textContent   = short(A.floorplan);
 quote();
+connect(false);
 refresh();
 setInterval(refresh, 15000);
 if (window.ethereum){

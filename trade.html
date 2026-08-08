@@ -229,7 +229,7 @@ const BAL=["function stats() view returns (uint256,uint256,uint256,uint256,uint2
 let provider, signer, me, read;
 let cur=1, side="long", tf=300, hoverIdx=null;
 const series={1:[],2:[],3:[]}, px={}, stat={}, mstate={};
-let loaded=false, pool=null, poolOwed=null;
+let loaded=false, pool=null, poolOwed=null, lastBlock=0, saveTick=0;
 
 function log(m,h){const d=document.createElement("div");
   d.innerHTML=`${new Date().toLocaleTimeString()} — ${m}`+(h?` <a href="${SCAN}/tx/${h}" target="_blank" rel="noopener">view</a>`:"");
@@ -369,17 +369,87 @@ function showOHLC(c){
 }
 
 /* ── history from PricePushed ─────────────────────────────────────── */
+/* ── cached history ───────────────────────────────────────────────────
+   Logs are expensive and public RPCs refuse large ranges inconsistently,
+   so a cold rebuild returns a different amount of history every time —
+   which is why the chart appeared to reset on refresh.
+
+   The series is cached locally and only blocks newer than the last cached
+   one are fetched. Refreshes are instant, history accumulates instead of
+   being re-derived, and a flaky RPC costs you nothing you already had. */
+const CACHE_KEY="pit.series.v1";
+const CACHE_MAX=6000;                 // points per market, ~50h at 30s
+
+function loadCache(){
+  try{
+    const raw=localStorage.getItem(CACHE_KEY); if(!raw) return 0;
+    const j=JSON.parse(raw);
+    // Cache is keyed to these contracts. A different engine means a
+    // different price history, so refuse to mix them.
+    if(j.engine!==A.engine) return 0;
+    let n=0;
+    for(const k in series){
+      const arr=(j.s&&j.s[k])||[];
+      series[k]=arr.filter(d=>Number.isFinite(d.t)&&Number.isFinite(d.p)&&d.t>0&&d.p>0);
+      n+=series[k].length;
+    }
+    lastBlock=Number(j.block)||0;
+    return n;
+  }catch(e){ return 0; }
+}
+
+function saveCache(){
+  try{
+    const out={};
+    for(const k in series) out[k]=series[k].slice(-CACHE_MAX);
+    localStorage.setItem(CACHE_KEY, JSON.stringify({engine:A.engine, block:lastBlock, s:out}));
+  }catch(e){
+    // Quota is the likely failure. Halve everything and try once more
+    // rather than leaving the cache in a broken state.
+    try{
+      for(const k in series) series[k]=series[k].slice(-Math.floor(CACHE_MAX/2));
+      const out={}; for(const k in series) out[k]=series[k];
+      localStorage.setItem(CACHE_KEY, JSON.stringify({engine:A.engine, block:lastBlock, s:out}));
+    }catch(e2){}
+  }
+}
+
+function dedupe(){
+  for(const k in series){
+    const seen=new Set(), out=[];
+    for(const d of series[k].sort((a,b)=>a.t-b.t)){
+      if(seen.has(d.t)) continue;
+      seen.add(d.t); out.push(d);
+    }
+    series[k]=out.slice(-CACHE_MAX);
+  }
+}
+
 async function history(p){
   if(loaded) return; loaded=true;
+  const had=loadCache();
+  if(had) drawChart();                        // paint from cache immediately
+
   try{
     const latest=await p.getBlockNumber();
     const topic=E.id("PricePushed(uint256,uint256,uint64,uint64)");
     const iface=new E.Interface(["event PricePushed(uint256 indexed id,uint256 value,uint64 roundId,uint64 at)"]);
-    let from=latest,got=0;
-    for(let i=0;i<10&&from>0;i++){
-      const lo=Math.max(0,from-5000);
-      let logs; try{ logs=await p.getLogs({address:A.engine,topics:[topic],fromBlock:lo,toBlock:from}); }
-      catch(e){ break; }
+
+    // Only reach back to what is missing. Cold start walks further.
+    const floor = lastBlock ? Math.max(0,lastBlock-10) : Math.max(0,latest-60000);
+    let from=latest, got=0, span=5000, guard=0;
+
+    while(from>floor && guard++<40){
+      const lo=Math.max(floor,from-span);
+      let logs;
+      try{
+        logs=await p.getLogs({address:A.engine,topics:[topic],fromBlock:lo,toBlock:from});
+      }catch(e){
+        // A refused range is not the end of the walk. Halve it and retry;
+        // only give up once the span is too small to be worth asking for.
+        if(span>500){ span=Math.floor(span/2); continue; }
+        break;
+      }
       for(const l of logs){
         try{
           const d=iface.parseLog(l); if(!d) continue;
@@ -390,16 +460,21 @@ async function history(p){
           if(series[id]&&Number.isFinite(t)&&t>0&&Number.isFinite(v)&&v>0){series[id].push({t,p:v});got++;}
         }catch{}
       }
-      from=lo-1; if(got>2500) break;
+      from=lo-1;
+      if(got>4000) break;
     }
-    for(const k in series) series[k].sort((a,b)=>a.t-b.t);
-  }catch(e){}
+    lastBlock=latest;
+    dedupe(); saveCache();
+  }catch(e){ dedupe(); }
 }
+
 function live(id,p,t){
   const s=series[id]; if(!s) return;
   if(!Number.isFinite(p)||p<=0||!Number.isFinite(t)||t<=0) return;
   if(s.length&&s[s.length-1].t>=t) return;
-  s.push({t,p}); if(s.length>4000) s.shift();
+  s.push({t,p}); if(s.length>CACHE_MAX) s.shift();
+  // Persist occasionally so a refresh keeps what the tape added.
+  if(++saveTick%6===0) saveCache();
 }
 
 /* ── chrome ───────────────────────────────────────────────────────── */

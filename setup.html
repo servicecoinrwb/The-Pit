@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Pit — setup &amp; admin</title> 
+<title>The Pit — setup &amp; admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -294,6 +294,18 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
     </div>
     <div class="hint">Force push skips the deviation breaker. For weekend reopens and nothing else.</div>
     <div class="why" id="why9"></div>
+
+    <div style="border-top:1px solid var(--edge);margin-top:16px;padding-top:14px">
+      <div class="row"><span class="k">Funding at full skew</span><span class="v" id="fundNow">—</span></div>
+      <div class="hint" style="margin-bottom:9px">Funding is what pushes back when the whole desk piles onto one
+        side and the pool has to take the other. At a factor of 100 it comes to 0.24% a day, which a trader who is
+        right by 5% does not notice — so nothing discourages the skew. A factor of 10000 gives 1%/hr at full
+        skew, which is a real carrying cost. The existing <code>maxFundingBps</code> of 100 caps it there exactly.</div>
+      <div class="act">
+        <button id="btnFundFix">Set funding factor to 10000 on all markets</button>
+      </div>
+      <div class="why" id="why10"></div>
+    </div>
   </div>
 </section>
 
@@ -368,6 +380,8 @@ const ENGINE = [
   "function isPusher(address) view returns (bool)",
   "function setPusher(address,bool)",
   "function forcePush(uint256,uint128)",
+  "function configureMarket(uint256,uint16,uint16,uint32,uint32,uint32,uint128)",
+  "function markets(uint256) view returns (bool listed,bool paused,bool hasSessions,uint16 maxLeverageX,uint16 maxDeviationBps,uint32 maxStaleness,uint32 fundingFactor,uint32 maxFundingBps,uint128 maxOpenInterest,string symbol)",
 ];
 
 /* ─── state ─────────────────────────────────────────────────────────── */
@@ -444,6 +458,15 @@ async function refresh(){
     await loadHistory(p);
     drawChart();
     $("mCount").textContent = (await en.marketCount()).toString();
+    try{
+      const cfg = await en.markets(1);
+      const f = Number(cfg.fundingFactor);
+      // contract: rate = skew/total * factor * 1e18 / 1e6, so at full skew
+      // the hourly fraction is simply factor * 1e12 / 1e18
+      const perHr = f / 1e6 * 100;
+      $("fundNow").textContent = `${(perHr).toFixed(4)}%/hr · ${(perHr*24).toFixed(2)}%/day  (factor ${f})`;
+      $("fundNow").className = "v " + (f >= 10000 ? "ok" : "warn");
+    }catch(e){}
     $("mRej").textContent = rej.toString();
     $("mRej").className = "v" + (rej>0n ? " warn" : "");
     if (rows.some(r=>r.s===5))
@@ -883,6 +906,37 @@ $("btnPusher").onclick = () => {
   if (!E.isAddress(a)){ say("why9","That is not a valid address.","err"); return; }
   send(()=>C.engine(signer).setPusher(a, true), "Authorise pusher", "why9");
 };
+/**
+ * Reads each market's current config and rewrites it with the stronger
+ * funding factor, leaving every other field exactly as it was. Reading
+ * first matters — configureMarket takes the full parameter set, so writing
+ * remembered values would silently revert any change made since.
+ */
+$("btnFundFix").onclick = async () => {
+  if (needWallet("why10")) return;
+  const en = C.engine(signer);
+  let done = 0, skipped = 0;
+  for (const m of MKT){
+    try{
+      const cfg = await C.engine(provider||readProvider()).markets(m.id);
+      if (!cfg.listed) continue;
+      if (Number(cfg.fundingFactor) === 10000){ skipped++; continue; }
+      await send(()=>en.configureMarket(
+        m.id, cfg.maxLeverageX, cfg.maxDeviationBps, cfg.maxStaleness,
+        10000, cfg.maxFundingBps, cfg.maxOpenInterest
+      ), `Funding factor on ${m.sym}`, "why10");
+      done++;
+    }catch(e){
+      say("why10", `${m.sym}: ${e.shortMessage||e.message}`, "err");
+      return;
+    }
+  }
+  say("why10",
+    done ? `Updated ${done} market${done===1?"":"s"}${skipped?`, ${skipped} already set`:""}.`
+         : "All markets already at 10000.", "ok");
+  refresh();
+};
+
 $("btnForce").onclick = () => {
   if (needWallet("why9")) return;
   const id = Number($("fpId").value||0);

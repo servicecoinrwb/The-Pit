@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"> 
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Pit — a pool-backed perp desk on Arc</title>
 <meta name="description" content="Perpetuals on Arc testnet. No order book. The pool takes the other side of every trade.">
@@ -190,6 +190,14 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
     <div class="cav">
       <b>US30 is listed but not fed.</b>
       <p>There is no trustworthy Dow index source wired up yet, and publishing a correlated proxy under that name would be a lie the desk settles on. The market stays shut until there is a feed worth trusting.</p>
+    </div>
+    <div class="cav">
+      <b>Three markets, not ten.</b>
+      <p>SPX, NAS, GOLD, SOL, XRP, BNB and HYPE are next, and they are held back rather than
+      half-shipped: the current engine sums unrealised profit across exactly three markets, so a
+      position on a fourth would be invisible to the pool's own accounting and the vault would
+      report itself richer than it is. Listing them early would look like progress and quietly
+      break the number depositors rely on.</p>
     </div>
     <div class="cav">
       <b>The money is not money.</b>

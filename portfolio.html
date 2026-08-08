@@ -115,6 +115,36 @@ const BAL=["function balanceOf(address) view returns (uint256)",
 
 let provider,signer,me,read;
 let trades=[], lp={dep:0n,wd:0n,shares:0n,value:0n}, openRows=[];
+let scannedTo=0, historyLoaded=false;
+
+/* Closed positions are deleted from contract storage, so events are the only
+   record — and a public RPC that refuses a log range silently drops trades
+   from the middle of that record. Cache what has been read and only scan
+   forward from there, so history accumulates instead of being re-derived
+   (badly) on every load. */
+const PKEY="pit.portfolio.v1";
+function cacheKey(){ return PKEY+":"+A.floorplan+":"+(me||"").toLowerCase(); }
+function loadP(){
+  try{
+    const j=JSON.parse(localStorage.getItem(cacheKey())||"null"); if(!j) return;
+    trades=(j.t||[]).map(t=>({...t,
+      size:BigInt(t.size),margin:BigInt(t.margin),entry:BigInt(t.entry),exit:BigInt(t.exit),
+      pnl:BigInt(t.pnl),funding:BigInt(t.funding),fees:BigInt(t.fees),
+      returned:BigInt(t.returned),net:BigInt(t.net)}));
+    lp.dep=BigInt(j.dep||0); lp.wd=BigInt(j.wd||0); scannedTo=Number(j.block)||0;
+  }catch(e){}
+}
+function saveP(){
+  try{
+    localStorage.setItem(cacheKey(), JSON.stringify({
+      block:scannedTo, dep:lp.dep.toString(), wd:lp.wd.toString(),
+      t:trades.map(t=>({...t,
+        size:t.size.toString(),margin:t.margin.toString(),entry:t.entry.toString(),
+        exit:t.exit.toString(),pnl:t.pnl.toString(),funding:t.funding.toString(),
+        fees:t.fees.toString(),returned:t.returned.toString(),net:t.net.toString()}))
+    }));
+  }catch(e){}
+}
 
 const n2=(v,d,p=2)=>Number(E.formatUnits(v,d)).toLocaleString(undefined,{minimumFractionDigits:p,maximumFractionDigits:p});
 const money=v=>v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -152,16 +182,25 @@ async function scan(p, address, topics, latest, back=120000){
 }
 
 async function loadHistory(p){
-  if(!me) return;
+  if(!me || historyLoaded) return;
+  historyLoaded=true;
+  loadP();
+  if(trades.length){ paintStats(); drawCurve(); paintTrades(); }   // show cache at once
+
   const pad=E.zeroPadValue(me,32);
   const latest=await p.getBlockNumber();
+  // Overlap slightly on the resume so a boundary event is not missed.
+  const back = scannedTo ? Math.max(1000, latest-scannedTo+50) : 400000;
 
+  // Opened must reach further back than Closed — a trade closed today may
+  // have been opened long before the resume point, and without its Opened
+  // event there is no way to know what went in.
   const [op,cl,lq,dp,wd]=await Promise.all([
-    scan(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest),
-    scan(p,A.floorplan,[E.id("Closed(uint256,address,uint256,int256,int256,uint256,uint256)"),null,pad],latest),
-    scan(p,A.floorplan,[E.id("Liquidated(uint256,address,address,uint256,uint256,uint256)"),null,pad],latest),
-    scan(p,A.ballast,[E.id("Deposit(address,address,uint256,uint256)"),null,pad],latest),
-    scan(p,A.ballast,[E.id("Withdraw(address,address,address,uint256,uint256)"),null,pad],latest),
+    scan(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest,400000),
+    scan(p,A.floorplan,[E.id("Closed(uint256,address,uint256,int256,int256,uint256,uint256)"),null,pad],latest,back),
+    scan(p,A.floorplan,[E.id("Liquidated(uint256,address,address,uint256,uint256,uint256)"),null,pad],latest,back),
+    scan(p,A.ballast,[E.id("Deposit(address,address,uint256,uint256)"),null,pad],latest,back),
+    scan(p,A.ballast,[E.id("Withdraw(address,address,address,uint256,uint256)"),null,pad],latest,back),
   ]);
 
   const opens=new Map();
@@ -195,12 +234,18 @@ async function loadHistory(p){
       fees:o.openFee,returned:0n,net:-inAmt,block:l.blockNumber});
   }catch{} }
 
-  out.sort((a,b)=>a.block-b.block);
-  trades=out;
+  // Merge with whatever was cached, keyed by position id so a re-scan of
+  // overlapping blocks cannot double-count a trade.
+  const byId=new Map(trades.map(t=>[t.id,t]));
+  for(const t of out) byId.set(t.id,t);
+  trades=[...byId.values()].sort((a,b)=>a.block-b.block);
 
-  lp.dep=0n; lp.wd=0n;
-  for(const l of dp){ try{ lp.dep+=iBal.parseLog(l).args[2]; }catch{} }
-  for(const l of wd){ try{ lp.wd +=iBal.parseLog(l).args[3]; }catch{} }
+  if(scannedTo===0){ lp.dep=0n; lp.wd=0n; }
+  for(const l of dp){ try{ if(l.blockNumber>scannedTo) lp.dep+=iBal.parseLog(l).args[2]; }catch{} }
+  for(const l of wd){ try{ if(l.blockNumber>scannedTo) lp.wd +=iBal.parseLog(l).args[3]; }catch{} }
+
+  scannedTo=latest;
+  saveP();
 }
 
 /* ── equity curve ─────────────────────────────────────────────────── */
@@ -369,11 +414,14 @@ async function refresh(){
     : "Connect a wallet to load history.";
 }
 
-$("btnConnect").onclick=async()=>{
-  if(!window.ethereum){ $("foot").textContent="No wallet found."; return; }
+/* A wallet already authorised on this origin comes back from eth_accounts
+   with no prompt, so moving between pages does not re-ask. */
+async function connect(prompt){
+  if(!window.ethereum){ if(prompt) $("foot").textContent="No wallet found."; return; }
   try{
     provider=new E.BrowserProvider(window.ethereum);
-    await provider.send("eth_requestAccounts",[]);
+    const have=await provider.send("eth_accounts",[]);
+    if(!have.length){ if(!prompt) return; await provider.send("eth_requestAccounts",[]); }
     if(Number((await provider.getNetwork()).chainId)!==CHAIN){
       try{ await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN_HEX}]}); }
       catch(sw){ if(sw.code===4902) await window.ethereum.request({method:"wallet_addEthereumChain",params:[{
@@ -384,11 +432,13 @@ $("btnConnect").onclick=async()=>{
     }
     signer=await provider.getSigner(); me=await signer.getAddress();
     $("dot").className="dot on"; $("who").textContent=short(me);
+    historyLoaded=false;
     refresh();
-  }catch(e){ $("foot").textContent=e.shortMessage||e.message; }
-};
+  }catch(e){ if(prompt) $("foot").textContent=e.shortMessage||e.message; }
+}
+$("btnConnect").onclick=()=>connect(true);
 
-refresh(); setInterval(refresh,30000);
+connect(false); refresh(); setInterval(refresh,30000);
 let rz; addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(drawCurve,150);});
 if(window.ethereum){ window.ethereum.on?.("accountsChanged",()=>location.reload()); }
 </script>

@@ -778,7 +778,8 @@ async function paintPos(p){
   $("tabPos").querySelectorAll("[data-a]").forEach(b=>b.onclick=async()=>{
     if(!signer){note("Connect a wallet first.","err");return;}
     const amt=E.parseUnits("50",6), c=C.chips(signer);
-    if((await c.allowance(me,A.floorplan))<amt) await send(()=>c.approve(A.floorplan,amt),"Approve");
+    if((await c.allowance(me,A.floorplan))<amt)
+      await send(()=>c.approve(A.floorplan, E.parseUnits("100000000",6)),"Approve Chips for trading");
     await send(()=>C.floor(signer).addMargin(b.dataset.a,amt),"Add margin");
   });
 }
@@ -883,7 +884,13 @@ $("btnGo").onclick=async()=>{
   const marg=E.parseUnits(($("fMargin").value||"0").trim(),6);
   const c=C.chips(signer), bal=await c.balanceOf(me);
   if(bal<marg){note(`Only ${n2(bal,6)} CHIP on hand.`,"err");return;}
-  if((await c.allowance(me,A.floorplan))<marg) await send(()=>c.approve(A.floorplan,marg),"Approve margin");
+  // Approve once for a large amount rather than the exact margin every
+  // time. Exact approvals mean two signatures per trade forever, which on
+  // a desk meant for quick entries is friction with no safety benefit —
+  // the spender is the same contract either way.
+  const MAXAPPROVE = E.parseUnits("100000000", 6);
+  if((await c.allowance(me,A.floorplan))<marg)
+    await send(()=>c.approve(A.floorplan, MAXAPPROVE),"Approve Chips for trading");
   await send(()=>C.floor(signer).open(cur,side==="long",size,marg),"Open "+side);
 };
 

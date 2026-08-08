@@ -236,6 +236,15 @@ function note(m,k){const n=$("note");n.textContent=m||"";n.className="note"+(k?"
 const n2=(v,d,p=2)=>Number(E.formatUnits(v,d)).toLocaleString(undefined,{minimumFractionDigits:p,maximumFractionDigits:p});
 const money=v=>v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const short=a=>a.slice(0,6)+"…"+a.slice(-4);
+/** Window length in the largest unit that still reads naturally. */
+function dur(sec){
+  if(!Number.isFinite(sec)||sec<=0) return "";
+  const m=Math.round(sec/60);
+  if(m<90) return m+"m";
+  const h=sec/3600;
+  if(h<48) return (h<10?h.toFixed(1):Math.round(h))+"h";
+  return Math.round(h/24)+"d";
+}
 
 function rp(){ return read ||= new E.FallbackProvider(
   RPCS.map((u,i)=>({provider:new E.JsonRpcProvider(u,CHAIN,{staticNetwork:true}),priority:i+1,stallTimeout:2500,weight:1})),CHAIN); }
@@ -386,13 +395,16 @@ function paintMkts(){
 
 function paintStats(){
   const m=mstate[cur]||{}, s=(series[cur]||[]);
-  let chg="—",mins=0;
-  if(s.length>1){ const f=s[0].p,l=s[s.length-1].p;
-    chg=((l/f-1)*100).toFixed(2)+"%"; mins=Math.round((s[s.length-1].t-s[0].t)/60); }
+  let chg="—",span="";
+  if(s.length>1){
+    const f=s[0].p,l=s[s.length-1].p;
+    chg=((l/f-1)*100).toFixed(2)+"%";
+    span=" · "+dur(s[s.length-1].t-s[0].t);
+  }
   const fr=m.funding!==undefined?Number(E.formatUnits(m.funding,18))*100:null;
   $("stats").innerHTML=`
     <div class="stat"><span class="k">Mark</span><span class="v">${px[cur]?"$"+money(px[cur]):"—"}</span></div>
-    <div class="stat"><span class="k">Change${mins?" · "+mins+"m":""}</span>
+    <div class="stat"><span class="k">Change${span}</span>
       <span class="v ${chg.startsWith("-")?"bad":"ok"}">${chg}</span></div>
     <div class="stat"><span class="k">Funding / hr</span><span class="v">${
       fr===null?"—":(fr>=0?"Longs pay ":"Pool pays ")+Math.abs(fr).toFixed(4)+"%"}</span></div>

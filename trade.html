@@ -279,6 +279,15 @@ function drawChart(){
       or wait for the feeder to publish a few more.</div>`;
     $("ohlc").textContent=""; return;
   }
+  // Thin history is worth saying out loud. This desk is hours old, so the
+  // longer timeframes genuinely cannot fill yet — that is a young feed, not
+  // a broken chart, and a reader should be told which.
+  const thin = cs.length < 12
+    ? `<div style="padding:7px 10px;font-size:11.5px;color:var(--mute)">
+        Only ${cs.length} candles at this timeframe — the feeder has about
+        ${dur((series[cur]||[]).length ? series[cur][series[cur].length-1].t - series[cur][0].t : 0)}
+        of history so far. Shorter timeframes will show more detail until it builds up.</div>`
+    : "";
   // Match the viewBox to the element's real pixel size. With a fixed
   // viewBox and preserveAspectRatio="none" a wide monitor stretches every
   // candle and every label horizontally; this keeps them honest.
@@ -289,13 +298,21 @@ function drawChart(){
   if(hi===lo){hi=lo*1.001;lo=lo*0.999;}
   const pad=(hi-lo)*0.10; lo-=pad; hi+=pad;
   const Y=v=>PT+(hi-v)/(hi-lo)*(H-PT-PB);
-  const cw=(W-PL-PR)/cs.length, bw=Math.max(1.5,Math.min(cw*0.62,13));
+  // A few candles across a wide chart used to leave hairline bars marooned
+  // in empty space, because the body width was capped at 13px however much
+  // room there was. Instead the plot only spans what the candles need at a
+  // comfortable width, and stays left-aligned like every other chart.
+  const IDEAL=17, GAP=0.62;
+  const full=W-PL-PR;
+  const cw=Math.min(full/cs.length, IDEAL*2.2);
+  const plotW=cw*cs.length;
+  const bw=Math.max(1.5, Math.min(cw*GAP, 34));
   const X=i=>PL+i*cw+cw/2;
 
   let grid="",bodies="";
   for(let i=0;i<=4;i++){
     const v=lo+(hi-lo)*i/4,y=Y(v);
-    grid+=`<line class="gl" x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"/>`+
+    grid+=`<line class="gl" x1="${PL}" y1="${y.toFixed(1)}" x2="${(PL+plotW).toFixed(1)}" y2="${y.toFixed(1)}"/>`+
           `<text class="ax" x="${W-PR+6}" y="${(y+3.5).toFixed(1)}">${money(v)}</text>`;
   }
   const step=Math.max(1,Math.floor(cs.length/5));
@@ -318,7 +335,7 @@ function drawChart(){
     cross=`<line class="cross" x1="${x.toFixed(1)}" y1="${PT}" x2="${x.toFixed(1)}" y2="${H-PB}"/>`;
   }
 
-  box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="svg"
+  box.innerHTML=thin+`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="svg"
       role="img" aria-label="${sym} candlestick chart">
     ${grid}${bodies}${cross}
     <line class="markline" x1="${PL}" y1="${my.toFixed(1)}" x2="${W-PR}" y2="${my.toFixed(1)}"/>

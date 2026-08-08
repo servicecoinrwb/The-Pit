@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Pit — trade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a1420; --slab:#101d2e; --panel:#16263f; --edge:#22364f;
+  --paper:#f5efe3; --mute:#8ba3bd; --dim:#5d7f9a;
+  --sky:#6fb7e3; --jade:#5fa88a; --rust:#b5512f; --amber:#d9a441;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--ink);color:var(--paper);
+     font:14px/1.5 "IBM Plex Mono",ui-monospace,monospace}
+button,select,input{font-family:inherit}
+
+/* ── top bar ─────────────────────────────────────── */
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px;
+     padding:11px 16px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.brand{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:19px;
+       letter-spacing:.02em;text-transform:uppercase}
+.brand span{color:var(--sky)}
+.brand a{color:inherit;text-decoration:none}
+.topright{display:flex;align-items:center;gap:9px;font-size:12px}
+.pill{border:1px solid var(--edge);border-radius:2px;padding:6px 11px;color:var(--mute);
+      text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+.pill:hover{border-color:var(--sky);color:var(--paper)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--rust);flex:none}
+.dot.on{background:var(--jade)}
+
+/* ── market tabs + stat strip ────────────────────── */
+.mkts{display:flex;gap:0;border-bottom:1px solid var(--edge);overflow-x:auto}
+.mkt{background:transparent;border:0;border-right:1px solid var(--edge);
+     border-bottom:2px solid transparent;padding:11px 18px;cursor:pointer;text-align:left;
+     color:var(--mute);white-space:nowrap;min-width:132px}
+.mkt:hover{background:var(--slab)}
+.mkt.on{border-bottom-color:var(--sky);background:var(--slab);color:var(--paper)}
+.mkt .s{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
+        letter-spacing:.1em;text-transform:uppercase;display:block}
+.mkt .p{font-size:15px;font-variant-numeric:tabular-nums;display:block;margin-top:2px}
+.mkt .st{font-size:10px;letter-spacing:.05em;text-transform:uppercase;display:block;margin-top:1px}
+.ok{color:var(--jade)} .warn{color:var(--amber)} .bad{color:var(--rust)}
+
+.stats{display:flex;gap:0;border-bottom:1px solid var(--edge);overflow-x:auto}
+.stat{padding:9px 16px;border-right:1px solid var(--edge);white-space:nowrap;flex:none}
+.stat .k{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);display:block}
+.stat .v{font-size:14px;font-variant-numeric:tabular-nums;display:block;margin-top:1px}
+
+/* ── main grid ───────────────────────────────────── */
+.main{display:grid;grid-template-columns:1fr 316px;gap:0}
+.chartcol{border-right:1px solid var(--edge);min-width:0}
+.tfbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+       padding:8px 14px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.tfs{display:flex;gap:5px}
+.tf{background:transparent;border:1px solid var(--edge);color:var(--mute);
+    padding:4px 10px;font-size:11px;cursor:pointer;border-radius:2px;letter-spacing:.06em}
+.tf.on{background:var(--sky);color:var(--ink);border-color:var(--sky)}
+.ohlc{font-size:11.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+.ohlc b{color:var(--paper);font-weight:500}
+#chart{padding:6px 8px 0}
+.tools{display:flex;align-items:center;gap:5px;padding:7px 14px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.tools .tl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin-right:3px}
+.tools .sep{width:1px;height:18px;background:var(--edge);margin:0 7px}
+.drawhint{font-size:11px;color:var(--amber);margin-left:6px}
+.ma1{stroke:#d9a441} .ma2{stroke:#b07fd4} .bbl{stroke:var(--mute);opacity:.75}
+.ind{fill:none;stroke-width:1.3}
+.bbfill{fill:var(--sky);opacity:.05}
+.rsiln{fill:none;stroke:#b07fd4;stroke-width:1.3}
+.rsig{stroke:var(--edge);stroke-width:.7;opacity:.6}
+.draw{stroke:var(--sky);stroke-width:1.2}
+.draw.h{stroke-dasharray:5 4}
+#chart svg{cursor:crosshair}
+#thin{padding:6px 12px;font-size:11.5px;color:var(--mute);line-height:1.5}
+#chart{height:min(56vh,430px)}
+#chart svg{width:100%;height:100%;display:block;touch-action:none}
+.gl{stroke:var(--edge);stroke-width:.7;opacity:.55}
+.ax{font:10px "IBM Plex Mono",monospace;fill:var(--mute)}
+.up{fill:var(--jade);stroke:var(--jade)}
+.dn{fill:var(--rust);stroke:var(--rust)}
+.wick{stroke-width:1}
+.cross{stroke:var(--mute);stroke-width:.7;stroke-dasharray:3 3}
+.markline{stroke:var(--sky);stroke-width:.8;stroke-dasharray:4 3;opacity:.8}
+.marktag{fill:var(--sky)}
+.marktxt{font:10px "IBM Plex Mono",monospace;fill:var(--ink)}
+.empty{padding:60px 20px;text-align:center;color:var(--mute);font-size:13px;line-height:1.7}
+
+/* ── ticket ──────────────────────────────────────── */
+.ticket{padding:14px}
+.sides{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
+.side{background:transparent;border:1px solid var(--edge);color:var(--mute);
+      padding:10px;cursor:pointer;border-radius:2px;
+      font:600 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.08em;text-transform:uppercase}
+.side.on.long{background:var(--jade);color:var(--ink);border-color:var(--jade)}
+.side.on.short{background:var(--rust);color:var(--paper);border-color:var(--rust)}
+label{display:block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+      color:var(--mute);margin:11px 0 4px}
+input[type=text]{width:100%;background:var(--ink);color:var(--paper);border:1px solid var(--edge);
+                 border-radius:2px;padding:9px 10px;font-size:14px}
+input:focus{outline:none;border-color:var(--sky)}
+.levs{display:flex;gap:5px;margin-top:7px}
+.lv{flex:1;background:transparent;border:1px solid var(--edge);color:var(--mute);
+    padding:5px 0;font-size:11px;cursor:pointer;border-radius:2px}
+.lv.on{background:var(--panel);color:var(--paper);border-color:var(--sky)}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:4px 0;
+    border-bottom:1px dotted var(--edge)}
+.kv:last-of-type{border-bottom:0}
+.kv .k{color:var(--mute)} .kv .v{font-variant-numeric:tabular-nums}
+.go{width:100%;margin-top:13px;padding:13px;border:0;border-radius:2px;cursor:pointer;
+    font:700 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.1em;text-transform:uppercase;
+    background:var(--sky);color:var(--ink)}
+.go:disabled{background:var(--edge);color:var(--mute);cursor:not-allowed}
+.note{font-size:11px;margin-top:9px;line-height:1.5;color:var(--amber)}
+.note.err{color:var(--rust)} .note.ok{color:var(--jade)}
+
+/* ── positions ───────────────────────────────────── */
+.below{border-top:1px solid var(--edge)}
+.tabs{display:flex;border-bottom:1px solid var(--edge)}
+.tb{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--mute);
+    padding:10px 16px;cursor:pointer;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.tb.on{color:var(--paper);border-bottom-color:var(--sky)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);
+   padding:9px 12px;border-bottom:1px solid var(--edge);font-weight:400;white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid var(--edge);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.danger td{background:rgba(181,81,47,.11)}
+.tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:10px;
+     letter-spacing:.07em;padding:2px 6px;border-radius:2px;color:var(--ink)}
+.tag.long{background:var(--jade)} .tag.short{background:var(--rust);color:var(--paper)}
+.mini{background:transparent;border:1px solid var(--edge);color:var(--sky);
+      padding:5px 10px;font-size:11px;cursor:pointer;border-radius:2px;letter-spacing:.05em}
+.mini:hover{border-color:var(--sky)}
+.none{padding:34px 16px;text-align:center;color:var(--mute);font-size:12.5px;line-height:1.7}
+.wrapscroll{overflow-x:auto}
+#log{padding:10px 14px;font-size:11.5px;color:var(--mute);max-height:170px;overflow:auto}
+#log div{padding:2px 0;border-bottom:1px dotted var(--edge);word-break:break-all}
+#log a{color:var(--sky)}
+
+@media (max-width:900px){
+  .main{grid-template-columns:1fr}
+  .chartcol{border-right:0;border-bottom:1px solid var(--edge)}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand"><a href="index.html">The <span>Pit</span></a></div>
+  <div class="topright">
+    <a class="pill" href="portfolio.html">Portfolio</a>
+    <a class="pill" href="setup.html">Setup &amp; admin</a>
+    <button class="pill" id="btnConnect" style="background:transparent;cursor:pointer">
+      <span class="dot" id="dot"></span><span id="who">Connect</span>
+    </button>
+  </div>
+</div>
+
+<div class="mkts" id="mkts"></div>
+<div class="stats" id="stats"></div>
+
+<div class="main">
+  <div class="chartcol">
+    <div class="tfbar">
+      <div class="tfs" id="tfs"></div>
+      <div class="ohlc" id="ohlc"></div>
+    </div>
+    <div class="tools">
+      <span class="tl">Indicators</span>
+      <button class="tf" data-ind="ma20">MA20</button>
+      <button class="tf" data-ind="ma50">MA50</button>
+      <button class="tf" data-ind="bb">Bollinger</button>
+      <button class="tf" data-ind="rsi">RSI</button>
+      <span class="sep"></span>
+      <span class="tl">Draw</span>
+      <button class="tf" data-draw="h">Level</button>
+      <button class="tf" data-draw="t">Trend</button>
+      <button class="tf" data-draw="e">Erase</button>
+      <button class="tf" id="clrAll">Clear</button>
+      <span class="drawhint" id="drawhint"></span>
+    </div>
+    <div id="thin"></div>
+    <div id="chart"></div>
+  </div>
+
+  <div class="ticket">
+    <div class="sides">
+      <button class="side long on" data-side="long">Long</button>
+      <button class="side short" data-side="short">Short</button>
+    </div>
+
+    <label for="fSize">Size (CHIP)</label>
+    <input type="text" id="fSize" value="1000" inputmode="decimal">
+
+    <label for="fMargin">Margin (CHIP)</label>
+    <input type="text" id="fMargin" value="100" inputmode="decimal">
+    <div class="levs" id="levs"></div>
+
+    <div style="margin-top:14px">
+      <div class="kv"><span class="k">Entry</span><span class="v" id="qEntry">—</span></div>
+      <div class="kv"><span class="k">Leverage</span><span class="v" id="qLev">—</span></div>
+      <div class="kv"><span class="k">Liquidation</span><span class="v" id="qLiq">—</span></div>
+      <div class="kv"><span class="k">Open fee</span><span class="v" id="qFee">—</span></div>
+      <div class="kv"><span class="k">Max profit</span><span class="v" id="qCap">—</span></div>
+    </div>
+
+    <button class="go" id="btnGo">Open long</button>
+    <div class="note" id="note"></div>
+  </div>
+</div>
+
+<div class="below">
+  <div class="tabs">
+    <button class="tb on" data-tab="pos">Positions</button>
+    <button class="tb" data-tab="desk">Desk</button>
+    <button class="tb" data-tab="log">Activity</button>
+  </div>
+  <div id="tabPos" class="wrapscroll"></div>
+  <div id="tabDesk" class="wrapscroll" hidden></div>
+  <div id="tabLog" hidden><div id="log"></div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+<script>
+/* ── config ───────────────────────────────────────────────────────── */
+const A = {
+  engine   : "0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
+  chips    : "0x207A26e236520b41e98098dCd656D453CDA931d6",
+  ballast  : "0x5De190b7dd6eD5B53596859710E0De1d6613bD68",
+  floorplan: "0x7aF178595B59fF39cB2f2c37185171922a79677C",
+};
+const CHAIN=5042002, CHAIN_HEX="0x4CEF52", SCAN="https://testnet.arcscan.app";
+const RPCS=["https://rpc.blockdaemon.testnet.arc.network","https://arc-testnet.drpc.org",
+            "https://rpc.quicknode.testnet.arc.network","https://5042002.rpc.thirdweb.com"];
+const MKT=[{id:1,sym:"ETH",lev:50},{id:2,sym:"BTC",lev:50},{id:3,sym:"US30",lev:20}];
+const STATUS=["Live","Not listed","Paused","No price","Stale","Closed"];
+const TFS=[{k:"1m",s:60},{k:"5m",s:300},{k:"15m",s:900},{k:"1h",s:3600}];
+const E=ethers, $=id=>document.getElementById(id);
+
+const ERC20=["function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)"];
+const FLOOR=["function open(uint256,bool,uint256,uint256) returns (uint256)",
+  "function close(uint256)","function addMargin(uint256,uint256)",
+  "function positionsOf(address) view returns (uint256[])",
+  "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)",
+  "function marketView(uint256) view returns (uint256 longSize,uint256 shortSize,int256 skew,int256 fundingHourly,int256 cumFunding,uint256 reserved,uint256 price,uint8 status)",
+  "function poolPnl() view returns (int256)"];
+const ENG=["function peek(uint256) view returns (uint256 value,uint64 updatedAt,uint64 roundId,uint8 s)"];
+const BAL=["function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
+
+/* ── state ────────────────────────────────────────────────────────── */
+let provider, signer, me, read;
+let cur=1, side="long", tf=300, hoverIdx=null;
+const series={1:[],2:[],3:[]}, px={}, stat={}, mstate={};
+let loaded=false, pool=null, poolOwed=null, lastBlock=0, saveTick=0;
+
+function log(m,h){const d=document.createElement("div");
+  d.innerHTML=`${new Date().toLocaleTimeString()} — ${m}`+(h?` <a href="${SCAN}/tx/${h}" target="_blank" rel="noopener">view</a>`:"");
+  $("log").prepend(d);}
+function note(m,k){const n=$("note");n.textContent=m||"";n.className="note"+(k?" "+k:"");}
+const n2=(v,d,p=2)=>Number(E.formatUnits(v,d)).toLocaleString(undefined,{minimumFractionDigits:p,maximumFractionDigits:p});
+const money=v=>v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const short=a=>a.slice(0,6)+"…"+a.slice(-4);
+/** Window length in the largest unit that still reads naturally. */
+function dur(sec){
+  if(!Number.isFinite(sec)||sec<=0) return "";
+  const m=Math.round(sec/60);
+  if(m<90) return m+"m";
+  const h=sec/3600;
+  if(h<48) return (h<10?h.toFixed(1):Math.round(h))+"h";
+  return Math.round(h/24)+"d";
+}
+
+function rp(){ return read ||= new E.FallbackProvider(
+  RPCS.map((u,i)=>({provider:new E.JsonRpcProvider(u,CHAIN,{staticNetwork:true}),priority:i+1,stallTimeout:2500,weight:1})),CHAIN); }
+const C={chips:p=>new E.Contract(A.chips,ERC20,p),
+         floor:p=>new E.Contract(A.floorplan,FLOOR,p),
+         eng:p=>new E.Contract(A.engine,ENG,p),
+         bal:p=>new E.Contract(A.ballast,BAL,p)};
+
+/* ── candles: aggregate the engine's prints into OHLC ─────────────── */
+/* The engine stores one price per push, not a candle. Bucketing those
+   prints gives OHLC that is genuinely this desk's — first print in a
+   bucket opens it, last one closes it. It will not match an exchange
+   chart exactly, and it is not supposed to: positions settle here. */
+function candles(id, secs){
+  const s=(series[id]||[]).filter(d=>Number.isFinite(d.t)&&Number.isFinite(d.p)&&d.t>0&&d.p>0);
+  if(!s.length) return [];
+  const out=[]; let b=null;
+  for(const d of s){
+    const k=Math.floor(d.t/secs)*secs;
+    if(!b||b.t!==k){ if(b)out.push(b); b={t:k,o:d.p,h:d.p,l:d.p,c:d.p,n:1}; }
+    else { b.h=Math.max(b.h,d.p); b.l=Math.min(b.l,d.p); b.c=d.p; b.n++; }
+  }
+  if(b)out.push(b);
+  return out.slice(-110);
+}
+
+/* ── indicator maths ──────────────────────────────────────────────────
+   All computed from the cached series, so they cost nothing on chain and
+   describe exactly the prices this desk settles against. */
+const ind={ma20:false,ma50:false,bb:false,rsi:false};
+
+function sma(v,n,i){ if(i<n-1) return null; let s=0; for(let k=i-n+1;k<=i;k++) s+=v[k]; return s/n; }
+function stdev(v,n,i,mean){ if(i<n-1) return null; let s=0; for(let k=i-n+1;k<=i;k++) s+=(v[k]-mean)**2; return Math.sqrt(s/n); }
+
+/** Wilder's RSI. Needs n+1 closes before it says anything. */
+function rsi(v,n=14){
+  const out=new Array(v.length).fill(null);
+  if(v.length<=n) return out;
+  let g=0,l=0;
+  for(let i=1;i<=n;i++){ const d=v[i]-v[i-1]; d>=0?g+=d:l-=d; }
+  g/=n; l/=n;
+  out[n]= l===0 ? 100 : 100-100/(1+g/l);
+  for(let i=n+1;i<v.length;i++){
+    const d=v[i]-v[i-1];
+    g=(g*(n-1)+(d>0?d:0))/n;
+    l=(l*(n-1)+(d<0?-d:0))/n;
+    out[i]= l===0 ? 100 : 100-100/(1+g/l);
+  }
+  return out;
+}
+
+/* ── drawings ─────────────────────────────────────────────────────────
+   Stored as (time, price) rather than pixels, so a level drawn on 5m is
+   the same level on 1h and survives new candles arriving. */
+const DRAW_KEY="pit.draw.v1";
+let draws={}, drawMode=null, pending=null;
+
+function loadDraws(){
+  try{ const j=JSON.parse(localStorage.getItem(DRAW_KEY)||"{}");
+       draws = j.engine===A.engine ? (j.d||{}) : {}; }catch(e){ draws={}; }
+}
+function saveDraws(){
+  try{ localStorage.setItem(DRAW_KEY, JSON.stringify({engine:A.engine,d:draws})); }catch(e){}
+}
+function myDraws(){ return draws[cur] ||= []; }
+
+function setMode(m){
+  drawMode = drawMode===m ? null : m;
+  pending=null;
+  document.querySelectorAll("[data-draw]").forEach(b=>
+    b.classList.toggle("on", b.dataset.draw===drawMode));
+  $("drawhint").textContent =
+    drawMode==="h" ? "Click the chart to place a price level" :
+    drawMode==="t" ? "Click two points to draw a trendline" :
+    drawMode==="e" ? "Click a drawing to remove it" : "";
+}
+
+function drawChart(){
+  const cs=candles(cur,tf), box=$("chart"), sym=MKT.find(m=>m.id===cur).sym;
+  if(cs.length<2){
+    box.innerHTML=`<div class="empty">Not enough prints yet for ${sym} at this timeframe.<br>
+      The chart builds from the engine's own price pushes — try a shorter timeframe,
+      or wait for the feeder to publish a few more.</div>`;
+    $("ohlc").textContent=""; $("thin").textContent=""; return;
+  }
+  const hist=(series[cur]||[]);
+  $("thin").textContent = cs.length < 12
+    ? `Only ${cs.length} candles at this timeframe — the feeder has about `
+      + dur(hist.length ? hist[hist.length-1].t - hist[0].t : 0)
+      + ` of history so far. Shorter timeframes show more detail until it builds up.`
+    : "";
+
+  const W=Math.max(360,Math.round(box.clientWidth||900));
+  const H=Math.max(220,Math.round(box.clientHeight||340));
+  const PR=64,PB=24,PT=10,PL=6;
+
+  // RSI takes its own pane beneath the price, rather than being squeezed
+  // onto a price axis it has nothing to do with.
+  const showR = ind.rsi && cs.length>15;
+  const bodyH = H-PT-PB;
+  const mainH = showR ? bodyH*0.66 : bodyH;
+  const rsiTop= PT+mainH+16, rsiH = showR ? bodyH-mainH-16 : 0;
+
+  const closes=cs.map(c=>c.c);
+  let lo=Math.min(...cs.map(c=>c.l)), hi=Math.max(...cs.map(c=>c.h));
+
+  // Indicators can sit outside the candle range; include them or the line
+  // silently clips and reads as wrong.
+  const extra=[];
+  if(ind.bb) for(let i=0;i<cs.length;i++){
+    const m=sma(closes,20,i); if(m===null) continue;
+    const sd=stdev(closes,20,i,m); extra.push(m+2*sd,m-2*sd);
+  }
+  if(ind.ma50) for(let i=0;i<cs.length;i++){const m=sma(closes,50,i); if(m!==null) extra.push(m);}
+  if(ind.ma20) for(let i=0;i<cs.length;i++){const m=sma(closes,20,i); if(m!==null) extra.push(m);}
+  for(const d of myDraws()) for(const p of d.pts) extra.push(p.p);
+  if(extra.length){ lo=Math.min(lo,...extra); hi=Math.max(hi,...extra); }
+
+  if(hi===lo){hi=lo*1.001;lo=lo*0.999;}
+  const pad=(hi-lo)*0.10; lo-=pad; hi+=pad;
+  const Y=v=>PT+(hi-v)/(hi-lo)*mainH;
+  const Yinv=y=>hi-(y-PT)/mainH*(hi-lo);
+
+  const IDEAL=17, GAP=0.62;
+  const full=W-PL-PR;
+  const cw=Math.min(full/cs.length, IDEAL*2.2);
+  const plotW=cw*cs.length;
+  const X0=PL+(full-plotW);
+  const bw=Math.max(1.5, Math.min(cw*GAP, 34));
+  const X=i=>X0+i*cw+cw/2;
+
+  // Time <-> pixel, via candle index so it stays correct across timeframes.
+  const xForT=t=>{
+    if(t<=cs[0].t) return X(0)-(cs[0].t-t)/tf*cw;
+    for(let i=1;i<cs.length;i++) if(t<=cs[i].t){
+      const f=(t-cs[i-1].t)/((cs[i].t-cs[i-1].t)||1); return X(i-1)+f*cw;
+    }
+    return X(cs.length-1)+(t-cs[cs.length-1].t)/tf*cw;
+  };
+  const tForX=x=>{
+    const idx=(x-X0-cw/2)/cw, i=Math.floor(idx);
+    if(i<0) return cs[0].t+idx*tf;
+    if(i>=cs.length-1) return cs[cs.length-1].t+(idx-(cs.length-1))*tf;
+    return cs[i].t+(idx-i)*((cs[i+1].t-cs[i].t)||tf);
+  };
+
+  let grid="",bodies="",lines="";
+  for(let i=0;i<=4;i++){
+    const v=lo+(hi-lo)*i/4,y=Y(v);
+    grid+=`<line class="gl" x1="${X0.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${y.toFixed(1)}"/>`+
+          `<text class="ax" x="${W-PR+6}" y="${(y+3.5).toFixed(1)}">${money(v)}</text>`;
+  }
+  const step=Math.max(1,Math.floor(cs.length/5));
+  for(let i=0;i<cs.length;i+=step){
+    grid+=`<text class="ax" x="${X(i).toFixed(1)}" y="${H-7}" text-anchor="middle">`+
+          `${new Date(cs[i].t*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</text>`;
+  }
+  cs.forEach((c,i)=>{
+    const k=c.c>=c.o?"up":"dn", x=X(i);
+    const yo=Y(c.o),yc=Y(c.c),top=Math.min(yo,yc),h=Math.max(1,Math.abs(yc-yo));
+    bodies+=`<line class="wick ${k}" x1="${x.toFixed(1)}" y1="${Y(c.h).toFixed(1)}" x2="${x.toFixed(1)}" y2="${Y(c.l).toFixed(1)}"/>`+
+            `<rect class="${k}" x="${(x-bw/2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"/>`;
+  });
+
+  const path=(vals,cls)=>{
+    let d="",open=false;
+    vals.forEach((v,i)=>{ if(v===null){open=false;return;}
+      d+=(open?" L":" M")+X(i).toFixed(1)+" "+Y(v).toFixed(1); open=true; });
+    return d?`<path class="ind ${cls}" d="${d.trim()}"/>`:"";
+  };
+  if(ind.ma20) lines+=path(cs.map((c,i)=>sma(closes,20,i)),"ma1");
+  if(ind.ma50) lines+=path(cs.map((c,i)=>sma(closes,50,i)),"ma2");
+  if(ind.bb){
+    const up=[],dn=[];
+    for(let i=0;i<cs.length;i++){
+      const m=sma(closes,20,i);
+      if(m===null){up.push(null);dn.push(null);continue;}
+      const sd=stdev(closes,20,i,m); up.push(m+2*sd); dn.push(m-2*sd);
+    }
+    lines+=path(up,"bbl")+path(dn,"bbl");
+  }
+
+  // drawings
+  let dstr="";
+  myDraws().forEach((d,i)=>{
+    if(d.type==="h"){
+      const y=Y(d.pts[0].p);
+      dstr+=`<line class="draw h" data-d="${i}" x1="${X0.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${y.toFixed(1)}"/>`+
+            `<text class="ax" x="${(X0+4).toFixed(1)}" y="${(y-4).toFixed(1)}" fill="var(--sky)">${money(d.pts[0].p)}</text>`;
+    } else if(d.pts.length===2){
+      dstr+=`<line class="draw" data-d="${i}" x1="${xForT(d.pts[0].t).toFixed(1)}" y1="${Y(d.pts[0].p).toFixed(1)}"`+
+            ` x2="${xForT(d.pts[1].t).toFixed(1)}" y2="${Y(d.pts[1].p).toFixed(1)}"/>`;
+    }
+  });
+
+  // RSI pane
+  let rstr="";
+  if(showR){
+    const r=rsi(closes,14);
+    const RY=v=>rsiTop+(100-v)/100*rsiH;
+    rstr+=`<line class="rsig" x1="${X0.toFixed(1)}" y1="${RY(70).toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${RY(70).toFixed(1)}"/>`+
+          `<line class="rsig" x1="${X0.toFixed(1)}" y1="${RY(30).toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${RY(30).toFixed(1)}"/>`+
+          `<text class="ax" x="${W-PR+6}" y="${(RY(70)+3.5).toFixed(1)}">70</text>`+
+          `<text class="ax" x="${W-PR+6}" y="${(RY(30)+3.5).toFixed(1)}">30</text>`;
+    let d="",open=false;
+    r.forEach((v,i)=>{ if(v===null){open=false;return;}
+      d+=(open?" L":" M")+X(i).toFixed(1)+" "+RY(v).toFixed(1); open=true; });
+    if(d) rstr+=`<path class="rsiln" d="${d.trim()}"/>`;
+    const last=r.filter(v=>v!==null).pop();
+    if(last!==undefined) rstr+=`<text class="ax" x="${(X0+4).toFixed(1)}" y="${(rsiTop+11).toFixed(1)}">RSI 14 · ${last.toFixed(1)}</text>`;
+  }
+
+  const mark=cs[cs.length-1].c, my=Y(mark);
+  let cross="";
+  if(hoverIdx!==null&&cs[hoverIdx]) cross=`<line class="cross" x1="${X(hoverIdx).toFixed(1)}" y1="${PT}" x2="${X(hoverIdx).toFixed(1)}" y2="${(H-PB).toFixed(1)}"/>`;
+  if(pending) cross+=`<circle cx="${xForT(pending.t).toFixed(1)}" cy="${Y(pending.p).toFixed(1)}" r="3" fill="var(--sky)"/>`;
+
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="svg"
+      role="img" aria-label="${sym} candlestick chart">
+    ${grid}${lines}${bodies}${dstr}${rstr}${cross}
+    <line class="markline" x1="${X0.toFixed(1)}" y1="${my.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${my.toFixed(1)}"/>
+    <rect class="marktag" x="${W-PR+2}" y="${(my-8).toFixed(1)}" width="60" height="16" rx="2"/>
+    <text class="marktxt" x="${W-PR+6}" y="${(my+4).toFixed(1)}">${money(mark)}</text>
+  </svg>`;
+
+  const svg=$("svg");
+  const local=ev=>{ const r=svg.getBoundingClientRect();
+    return {x:(ev.clientX-r.left)/r.width*W, y:(ev.clientY-r.top)/r.height*H}; };
+
+  svg.onpointermove=ev=>{
+    const {x}=local(ev);
+    const i=Math.round((x-X0-cw/2)/cw);
+    hoverIdx=Math.max(0,Math.min(cs.length-1,i)); showOHLC(cs[hoverIdx]); drawChart();
+  };
+  svg.onpointerleave=()=>{hoverIdx=null;showOHLC(cs[cs.length-1]);drawChart();};
+
+  svg.onclick=ev=>{
+    if(!drawMode) return;
+    const {x,y}=local(ev);
+    const pt={t:Math.round(tForX(x)), p:Yinv(y)};
+    if(drawMode==="h"){ myDraws().push({type:"h",pts:[pt]}); saveDraws(); setMode(null); }
+    else if(drawMode==="t"){
+      if(!pending){ pending=pt; }
+      else { myDraws().push({type:"t",pts:[pending,pt]}); pending=null; saveDraws(); setMode(null); }
+    } else if(drawMode==="e"){
+      // nearest drawing by pixel distance to its rendered geometry
+      let best=-1,bd=1e9;
+      myDraws().forEach((d,i)=>{
+        let dist;
+        if(d.type==="h") dist=Math.abs(Y(d.pts[0].p)-y);
+        else{
+          const x1=xForT(d.pts[0].t),y1=Y(d.pts[0].p),x2=xForT(d.pts[1].t),y2=Y(d.pts[1].p);
+          const L=Math.hypot(x2-x1,y2-y1)||1;
+          dist=Math.abs((y2-y1)*x-(x2-x1)*y+x2*y1-y2*x1)/L;
+        }
+        if(dist<bd){bd=dist;best=i;}
+      });
+      if(best>=0&&bd<12){ myDraws().splice(best,1); saveDraws(); }
+      setMode(null);
+    }
+    drawChart();
+  };
+
+  showOHLC(cs[hoverIdx!==null?hoverIdx:cs.length-1]);
+}
+
+function showOHLC(c){
+  if(!c){$("ohlc").textContent="";return;}
+  const up=c.c>=c.o, cls=up?"ok":"bad";
+  $("ohlc").innerHTML=`O <b>${money(c.o)}</b> H <b>${money(c.h)}</b> `+
+    `L <b>${money(c.l)}</b> C <b class="${cls}">${money(c.c)}</b> `+
+    `· ${c.n} print${c.n>1?"s":""}`;
+}
+
+/* ── history from PricePushed ─────────────────────────────────────── */
+/* ── cached history ───────────────────────────────────────────────────
+   Logs are expensive and public RPCs refuse large ranges inconsistently,
+   so a cold rebuild returns a different amount of history every time —
+   which is why the chart appeared to reset on refresh.
+
+   The series is cached locally and only blocks newer than the last cached
+   one are fetched. Refreshes are instant, history accumulates instead of
+   being re-derived, and a flaky RPC costs you nothing you already had. */
+const CACHE_KEY="pit.series.v1";
+const CACHE_MAX=6000;                 // points per market, ~50h at 30s
+
+function loadCache(){
+  try{
+    const raw=localStorage.getItem(CACHE_KEY); if(!raw) return 0;
+    const j=JSON.parse(raw);
+    // Cache is keyed to these contracts. A different engine means a
+    // different price history, so refuse to mix them.
+    if(j.engine!==A.engine) return 0;
+    let n=0;
+    for(const k in series){
+      const arr=(j.s&&j.s[k])||[];
+      series[k]=arr.filter(d=>Number.isFinite(d.t)&&Number.isFinite(d.p)&&d.t>0&&d.p>0);
+      n+=series[k].length;
+    }
+    lastBlock=Number(j.block)||0;
+    return n;
+  }catch(e){ return 0; }
+}
+
+function saveCache(){
+  try{
+    const out={};
+    for(const k in series) out[k]=series[k].slice(-CACHE_MAX);
+    localStorage.setItem(CACHE_KEY, JSON.stringify({engine:A.engine, block:lastBlock, s:out}));
+  }catch(e){
+    // Quota is the likely failure. Halve everything and try once more
+    // rather than leaving the cache in a broken state.
+    try{
+      for(const k in series) series[k]=series[k].slice(-Math.floor(CACHE_MAX/2));
+      const out={}; for(const k in series) out[k]=series[k];
+      localStorage.setItem(CACHE_KEY, JSON.stringify({engine:A.engine, block:lastBlock, s:out}));
+    }catch(e2){}
+  }
+}
+
+function dedupe(){
+  for(const k in series){
+    const seen=new Set(), out=[];
+    for(const d of series[k].sort((a,b)=>a.t-b.t)){
+      if(seen.has(d.t)) continue;
+      seen.add(d.t); out.push(d);
+    }
+    series[k]=out.slice(-CACHE_MAX);
+  }
+}
+
+async function history(p){
+  if(loaded) return; loaded=true;
+  const had=loadCache();
+  if(had) drawChart();                        // paint from cache immediately
+
+  try{
+    const latest=await p.getBlockNumber();
+    const topic=E.id("PricePushed(uint256,uint256,uint64,uint64)");
+    const iface=new E.Interface(["event PricePushed(uint256 indexed id,uint256 value,uint64 roundId,uint64 at)"]);
+
+    // Only reach back to what is missing. Cold start walks further.
+    const floor = lastBlock ? Math.max(0,lastBlock-10) : Math.max(0,latest-60000);
+    let from=latest, got=0, span=5000, guard=0;
+
+    while(from>floor && guard++<40){
+      const lo=Math.max(floor,from-span);
+      let logs;
+      try{
+        logs=await p.getLogs({address:A.engine,topics:[topic],fromBlock:lo,toBlock:from});
+      }catch(e){
+        // A refused range is not the end of the walk. Halve it and retry;
+        // only give up once the span is too small to be worth asking for.
+        if(span>500){ span=Math.floor(span/2); continue; }
+        break;
+      }
+      for(const l of logs){
+        try{
+          const d=iface.parseLog(l); if(!d) continue;
+          // Positional: ethers' Result extends Array, so `.at` would resolve
+          // to Array.prototype.at rather than the event's `at` field.
+          const id=Number(d.args[0]), t=Number(d.args[3]);
+          const v=Number(E.formatUnits(d.args[1],18));
+          if(series[id]&&Number.isFinite(t)&&t>0&&Number.isFinite(v)&&v>0){series[id].push({t,p:v});got++;}
+        }catch{}
+      }
+      from=lo-1;
+      if(got>4000) break;
+    }
+    lastBlock=latest;
+    dedupe(); saveCache();
+  }catch(e){ dedupe(); }
+}
+
+function live(id,p,t){
+  const s=series[id]; if(!s) return;
+  if(!Number.isFinite(p)||p<=0||!Number.isFinite(t)||t<=0) return;
+  if(s.length&&s[s.length-1].t>=t) return;
+  s.push({t,p}); if(s.length>CACHE_MAX) s.shift();
+  // Persist occasionally so a refresh keeps what the tape added.
+  if(++saveTick%6===0) saveCache();
+}
+
+/* ── chrome ───────────────────────────────────────────────────────── */
+function paintMkts(){
+  $("mkts").innerHTML=MKT.map(m=>{
+    const s=stat[m.id], p=px[m.id];
+    const cls=s===0?"ok":s===5?"warn":"bad";
+    return `<button class="mkt${m.id===cur?" on":""}" data-m="${m.id}">
+      <span class="s">${m.sym}</span>
+      <span class="p">${p?"$"+money(p):"—"}</span>
+      <span class="st ${cls}">${STATUS[s]??"—"}</span></button>`;
+  }).join("");
+  $("mkts").querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{
+    cur=Number(b.dataset.m); hoverIdx=null; paintMkts(); drawChart(); quote(); paintStats();
+  });
+}
+
+function paintStats(){
+  const m=mstate[cur]||{}, s=(series[cur]||[]);
+  let chg="—",span="";
+  if(s.length>1){
+    const f=s[0].p,l=s[s.length-1].p;
+    chg=((l/f-1)*100).toFixed(2)+"%";
+    span=" · "+dur(s[s.length-1].t-s[0].t);
+  }
+  const fr=m.funding!==undefined?Number(E.formatUnits(m.funding,18))*100:null;
+  $("stats").innerHTML=`
+    <div class="stat"><span class="k">Mark</span><span class="v">${px[cur]?"$"+money(px[cur]):"—"}</span></div>
+    <div class="stat"><span class="k">Change${span}</span>
+      <span class="v ${chg.startsWith("-")?"bad":"ok"}">${chg}</span></div>
+    <div class="stat"><span class="k">Funding / hr</span><span class="v">${
+      fr===null?"—":(fr>=0?"Longs pay ":"Pool pays ")+Math.abs(fr).toFixed(4)+"%"}</span></div>
+    <div class="stat"><span class="k">Open interest L / S</span><span class="v">${
+      m.L!==undefined?n2(m.L,6,0)+" / "+n2(m.S,6,0):"—"}</span></div>
+    <div class="stat"><span class="k">Pool free</span><span class="v">${
+      pool?n2(pool[2],6,0)+" CHIP":"—"}</span></div>
+    <div class="stat"><span class="k">Pool owes</span><span class="v ${poolOwed>0n?"bad":"ok"}">${
+      poolOwed===null?"—":(poolOwed<0n?"-":"")+n2(poolOwed<0n?-poolOwed:poolOwed,6)}</span></div>`;
+}
+
+/* ── ticket ───────────────────────────────────────────────────────── */
+$("tfs").innerHTML=TFS.map(t=>`<button class="tf${t.s===tf?" on":""}" data-tf="${t.s}">${t.k}</button>`).join("");
+$("tfs").querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{
+  tf=Number(b.dataset.tf); hoverIdx=null;
+  $("tfs").querySelectorAll(".tf").forEach(x=>x.className="tf"+(Number(x.dataset.tf)===tf?" on":""));
+  drawChart();
+});
+$("levs").innerHTML=[2,5,10,20,50].map(l=>`<button class="lv" data-lv="${l}">${l}x</button>`).join("");
+$("levs").querySelectorAll("[data-lv]").forEach(b=>b.onclick=()=>{
+  const size=Number($("fSize").value||0); if(!size) return;
+  $("fMargin").value=(size/Number(b.dataset.lv)).toFixed(2); quote();
+});
+document.querySelectorAll(".side").forEach(b=>b.onclick=()=>{
+  side=b.dataset.side;
+  document.querySelectorAll(".side").forEach(x=>x.classList.toggle("on",x.dataset.side===side));
+  quote();
+});
+["fSize","fMargin"].forEach(id=>$(id).addEventListener("input",quote));
+
+function quote(){
+  const meta=MKT.find(m=>m.id===cur);
+  const size=Number($("fSize").value||0), marg=Number($("fMargin").value||0);
+  const p=px[cur]||0, fee=size*0.001, net=marg-fee, lev=net>0?size/net:0;
+
+  $("qEntry").textContent = p?"$"+money(p):"no price";
+  $("qFee").textContent   = fee?money(fee)+" CHIP":"—";
+  $("qCap").textContent   = size?money(size*0.5)+" CHIP":"—";
+  $("qLev").textContent   = net>0?lev.toFixed(1)+"x / "+meta.lev+"x max":"—";
+  $("qLev").className     = "v "+(lev>meta.lev?"bad":"");
+
+  if(p&&net>0&&size>0){
+    const room=net-size*0.001-size*0.01, mv=room*p/size;
+    const liq=side==="long"?p-mv:p+mv;
+    $("qLiq").textContent=liq>0?"$"+money(liq):"immediate";
+    $("qLiq").className="v warn";
+  } else $("qLiq").textContent="—";
+
+  $("btnGo").textContent="Open "+side;
+  $("btnGo").style.background = side==="long"?"var(--jade)":"var(--rust)";
+  $("btnGo").style.color      = side==="long"?"var(--ink)":"var(--paper)";
+
+  let msg="",k="";
+  if(stat[cur]!==0){msg=`${meta.sym} is ${(STATUS[stat[cur]]||"unavailable").toLowerCase()} — the engine will reject an open until it is live.`;k="err";}
+  else if(size<10){msg="Minimum size is 10 CHIP.";k="err";}
+  else if(net<=0){msg="Margin must exceed the open fee.";k="err";}
+  else if(lev>meta.lev){msg=`${lev.toFixed(1)}x is over the ${meta.lev}x cap on ${meta.sym}.`;k="err";}
+  note(msg,k);
+  $("btnGo").disabled=!!msg;
+  if(msg) $("btnGo").style.background="var(--edge)", $("btnGo").style.color="var(--mute)";
+}
+
+/* ── positions ────────────────────────────────────────────────────── */
+async function paintPos(p){
+  if(!me){$("tabPos").innerHTML='<div class="none">Connect a wallet to see your positions.</div>';return;}
+  let ids=[]; try{ ids=await C.floor(p).positionsOf(me); }catch(e){ return; }
+  const rows=[];
+  for(const id of ids){
+    let v; try{ v=await C.floor(p).positionView(id); }catch(e){ continue; }
+    const q=v[0]; if(q.owner===E.ZeroAddress) continue;
+    const sym=(MKT.find(m=>m.id===Number(q.marketId))||{}).sym||q.marketId;
+    const pnl=v[2], danger=v[7];
+    const pct=q.margin>0n?Number(pnl)*100/Number(q.margin):0;
+    rows.push(`<tr class="${danger?"danger":""}">
+      <td><span class="tag ${q.isLong?"long":"short"}">${q.isLong?"LONG":"SHORT"}</span> ${sym}</td>
+      <td>${n2(q.size,6)}</td><td>${n2(q.margin,6)}</td>
+      <td>${n2(q.entryPrice,18)}</td><td>${n2(v[1],18)}</td>
+      <td class="${Number(pnl)>=0?"ok":"bad"}">${Number(pnl)>=0?"+":"-"}${n2(pnl<0n?-pnl:pnl,6)} (${pct.toFixed(1)}%)</td>
+      <td>${Number(v[3])>=0?"":"-"}${n2(v[3]<0n?-v[3]:v[3],6)}</td>
+      <td class="${danger?"bad":"warn"}">${n2(v[6],18)}</td>
+      <td><button class="mini" data-c="${id}">Close</button>
+          <button class="mini" data-a="${id}">+50</button></td></tr>`);
+  }
+  $("tabPos").innerHTML = rows.length ? `<table><thead><tr>
+      <th>Market</th><th>Size</th><th>Margin</th><th>Entry</th><th>Mark</th>
+      <th>PnL</th><th>Funding</th><th>Liq. price</th><th></th></tr></thead>
+      <tbody>${rows.join("")}</tbody></table>`
+    : '<div class="none">No open positions.<br>Rows turn red when equity nears maintenance — anyone can liquidate at that point.</div>';
+
+  $("tabPos").querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>
+    signer ? send(()=>C.floor(signer).close(b.dataset.c),"Close #"+b.dataset.c) : note("Connect a wallet first.","err"));
+  $("tabPos").querySelectorAll("[data-a]").forEach(b=>b.onclick=async()=>{
+    if(!signer){note("Connect a wallet first.","err");return;}
+    const amt=E.parseUnits("50",6), c=C.chips(signer);
+    if((await c.allowance(me,A.floorplan))<amt) await send(()=>c.approve(A.floorplan,amt),"Approve");
+    await send(()=>C.floor(signer).addMargin(b.dataset.a,amt),"Add margin");
+  });
+}
+
+async function paintDesk(p){
+  const rows=[];
+  for(const m of MKT){
+    const s=mstate[m.id]; if(!s) continue;
+    const fr=Number(E.formatUnits(s.funding,18))*100;
+    rows.push(`<tr><td>${m.sym}</td><td>${n2(s.L,6,0)}</td><td>${n2(s.S,6,0)}</td>
+      <td>${(fr>=0?"Longs pay ":"Pool pays ")+Math.abs(fr).toFixed(4)+"%/hr"}</td>
+      <td>${n2(s.reserved,6,0)}</td></tr>`);
+  }
+  $("tabDesk").innerHTML=`<table><thead><tr><th>Market</th><th>Long OI</th><th>Short OI</th>
+    <th>Funding</th><th>Reserved</th></tr></thead><tbody>${rows.join("")}</tbody></table>
+    ${pool?`<div class="none">Pool holds ${n2(pool[0],6,0)} CHIP · ${n2(pool[2],6,0)} free to back new positions ·
+      ${pool[6]?"liability feed reachable":"LIABILITY FEED UNREACHABLE — pool value is overstated"}</div>`:""}`;
+}
+
+document.querySelectorAll(".tb").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tb").forEach(x=>x.classList.toggle("on",x===b));
+  $("tabPos").hidden=b.dataset.tab!=="pos";
+  $("tabDesk").hidden=b.dataset.tab!=="desk";
+  $("tabLog").hidden=b.dataset.tab!=="log";
+});
+
+/* ── refresh ──────────────────────────────────────────────────────── */
+async function refresh(){
+  const p=provider||rp();
+  try{
+    for(const m of MKT){
+      const [v,at,,s]=await C.eng(p).peek(m.id);
+      px[m.id]=Number(v)?Number(E.formatUnits(v,18)):0;
+      stat[m.id]=Number(s);
+      live(m.id,px[m.id],Number(at));
+    }
+    await history(p);
+    paintMkts(); drawChart();
+  }catch(e){ log("Price read failed: "+(e.shortMessage||e.message)); }
+
+  try{
+    for(const m of MKT){
+      const v=await C.floor(p).marketView(m.id);
+      mstate[m.id]={L:v[0],S:v[1],funding:v[3],reserved:v[5]};
+    }
+    // ethers' Result is frozen — attaching a property to it silently fails
+    // and the undefined read downstream throws, which took the whole stats
+    // strip and the ticket quote down with it.
+    pool=await C.bal(p).stats();
+    poolOwed=await C.floor(p).poolPnl();
+  }catch(e){}
+
+  // Each painter is isolated. A failure in one should degrade that panel,
+  // not blank the page — which is exactly what happened when the pool read
+  // threw and took the stats strip and the ticket quote with it.
+  try{ paintStats(); }catch(e){ log("Stats failed: "+e.message); }
+  try{ quote(); }catch(e){ log("Quote failed: "+e.message); }
+  try{ await paintPos(p); }catch(e){ log("Positions failed: "+e.message); }
+  try{ await paintDesk(p); }catch(e){ log("Desk failed: "+e.message); }
+}
+
+/* ── wallet ───────────────────────────────────────────────────────── */
+async function send(fn,label){
+  try{
+    note("Waiting for signature…","");
+    const tx=await fn(); note("Submitted…",""); log(label+" submitted",tx.hash);
+    await tx.wait(); note(label+" confirmed.","ok"); log(label+" confirmed",tx.hash);
+    await refresh();
+  }catch(e){const m=e.shortMessage||e.reason||e.message||"failed";note(m,"err");log(label+" failed: "+m);}
+}
+
+$("btnConnect").onclick=async()=>{
+  if(!window.ethereum){note("No wallet found.","err");return;}
+  try{
+    provider=new E.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts",[]);
+    if(Number((await provider.getNetwork()).chainId)!==CHAIN){
+      try{ await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN_HEX}]}); }
+      catch(sw){ if(sw.code===4902) await window.ethereum.request({method:"wallet_addEthereumChain",params:[{
+        chainId:CHAIN_HEX,chainName:"Arc Network Testnet",
+        nativeCurrency:{name:"USDC",symbol:"USDC",decimals:18},
+        rpcUrls:[RPCS[0]],blockExplorerUrls:[SCAN]}]}); else throw sw; }
+      provider=new E.BrowserProvider(window.ethereum);
+    }
+    signer=await provider.getSigner(); me=await signer.getAddress();
+    $("dot").className="dot on"; $("who").textContent=short(me);
+    log("Connected "+short(me)); refresh();
+  }catch(e){ note(e.shortMessage||e.message,"err"); }
+};
+
+$("btnGo").onclick=async()=>{
+  if(!signer){note("Connect a wallet first.","err");return;}
+  const size=E.parseUnits(($("fSize").value||"0").trim(),6);
+  const marg=E.parseUnits(($("fMargin").value||"0").trim(),6);
+  const c=C.chips(signer), bal=await c.balanceOf(me);
+  if(bal<marg){note(`Only ${n2(bal,6)} CHIP on hand.`,"err");return;}
+  if((await c.allowance(me,A.floorplan))<marg) await send(()=>c.approve(A.floorplan,marg),"Approve margin");
+  await send(()=>C.floor(signer).open(cur,side==="long",size,marg),"Open "+side);
+};
+
+/* ── boot ─────────────────────────────────────────────────────────── */
+loadDraws();
+document.querySelectorAll("[data-ind]").forEach(b=>b.onclick=()=>{
+  ind[b.dataset.ind]=!ind[b.dataset.ind];
+  b.classList.toggle("on",ind[b.dataset.ind]); drawChart();
+});
+document.querySelectorAll("[data-draw]").forEach(b=>b.onclick=()=>setMode(b.dataset.draw));
+$("clrAll").onclick=()=>{ draws[cur]=[]; saveDraws(); setMode(null); drawChart(); };
+
+paintMkts(); refresh(); setInterval(refresh,15000);
+let rz; addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(drawChart,150); });
+if(window.ethereum){
+  window.ethereum.on?.("accountsChanged",()=>location.reload());
+  window.ethereum.on?.("chainChanged",()=>location.reload());
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Pit — portfolio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0a1420;--slab:#101d2e;--panel:#16263f;--edge:#22364f;
+      --paper:#f5efe3;--mute:#8ba3bd;--sky:#6fb7e3;--jade:#5fa88a;--rust:#b5512f;--amber:#d9a441}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--ink);color:var(--paper);font:14px/1.5 "IBM Plex Mono",ui-monospace,monospace}
+button{font-family:inherit}
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px;
+     padding:11px 16px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.brand{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:19px;
+       letter-spacing:.02em;text-transform:uppercase}
+.brand span{color:var(--sky)} .brand a{color:inherit;text-decoration:none}
+.topright{display:flex;align-items:center;gap:9px;font-size:12px}
+.pill{border:1px solid var(--edge);border-radius:2px;padding:6px 11px;color:var(--mute);
+      text-decoration:none;display:inline-flex;align-items:center;gap:7px;background:transparent;cursor:pointer}
+.pill:hover{border-color:var(--sky);color:var(--paper)}
+.pill.on{border-color:var(--sky);color:var(--paper)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--rust);flex:none}
+.dot.on{background:var(--jade)}
+
+.stats{display:flex;border-bottom:1px solid var(--edge);overflow-x:auto}
+.stat{padding:12px 18px;border-right:1px solid var(--edge);white-space:nowrap;flex:none}
+.stat .k{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);display:block}
+.stat .v{font-size:19px;font-variant-numeric:tabular-nums;display:block;margin-top:2px}
+.stat .s{font-size:10.5px;color:var(--mute);display:block;margin-top:1px}
+.ok{color:var(--jade)} .bad{color:var(--rust)} .warn{color:var(--amber)}
+
+h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
+   letter-spacing:.14em;text-transform:uppercase;color:var(--mute);padding:13px 16px 0}
+.how{padding:5px 16px 11px;color:var(--mute);font-size:12px;line-height:1.6;max-width:88ch}
+#curve{padding:0 10px 8px;height:260px}
+#curve svg{width:100%;height:100%;display:block}
+.gl{stroke:var(--edge);stroke-width:.7;opacity:.6}
+.zero{stroke:var(--mute);stroke-width:.8;stroke-dasharray:4 3;opacity:.7}
+.ax{font:10px "IBM Plex Mono",monospace;fill:var(--mute)}
+.curveline{fill:none;stroke:var(--sky);stroke-width:1.7;stroke-linejoin:round}
+.curvefill{opacity:.10}
+.pt{fill:var(--sky)}
+
+.tabs{display:flex;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge)}
+.tb{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--mute);
+    padding:10px 16px;cursor:pointer;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.tb.on{color:var(--paper);border-bottom-color:var(--sky)}
+.wrapscroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);
+   padding:9px 12px;border-bottom:1px solid var(--edge);font-weight:400;white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--edge);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:10px;
+     letter-spacing:.07em;padding:2px 6px;border-radius:2px;color:var(--ink)}
+.tag.long{background:var(--jade)} .tag.short{background:var(--rust);color:var(--paper)}
+.tag.liq{background:var(--rust);color:var(--paper)}
+.none{padding:36px 16px;text-align:center;color:var(--mute);font-size:12.5px;line-height:1.8}
+.foot{padding:14px 16px 50px;color:var(--mute);font-size:11.5px;line-height:1.7}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand"><a href="index.html">The <span>Pit</span></a></div>
+  <div class="topright">
+    <a class="pill" href="trade.html">Trade</a>
+    <a class="pill on" href="portfolio.html">Portfolio</a>
+    <a class="pill" href="setup.html">Setup</a>
+    <button class="pill" id="btnConnect"><span class="dot" id="dot"></span><span id="who">Connect</span></button>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<h2>Equity curve</h2>
+<div class="how" id="curveHow">Cumulative net result of every closed trade, in order. Net means what
+came back less what went in — price move, funding and both fees, all of it. It is the only number that
+says whether trading here made or lost money.</div>
+<div id="curve"></div>
+
+<div class="tabs">
+  <button class="tb on" data-t="trades">Closed trades</button>
+  <button class="tb" data-t="open">Open</button>
+  <button class="tb" data-t="lp">LP position</button>
+</div>
+<div id="tabTrades" class="wrapscroll"></div>
+<div id="tabOpen" class="wrapscroll" hidden></div>
+<div id="tabLp" hidden></div>
+
+<div class="foot" id="foot"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+<script>
+const A={engine:"0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
+         chips:"0x207A26e236520b41e98098dCd656D453CDA931d6",
+         ballast:"0x5De190b7dd6eD5B53596859710E0De1d6613bD68",
+         floorplan:"0x7aF178595B59fF39cB2f2c37185171922a79677C"};
+const CHAIN=5042002, CHAIN_HEX="0x4CEF52", SCAN="https://testnet.arcscan.app";
+const RPCS=["https://rpc.blockdaemon.testnet.arc.network","https://arc-testnet.drpc.org",
+            "https://rpc.quicknode.testnet.arc.network","https://5042002.rpc.thirdweb.com"];
+const MKT={1:"ETH",2:"BTC",3:"US30",4:"SPX",5:"NAS",6:"GOLD",7:"SOL",8:"XRP",9:"LINK",10:"AVAX"};
+const E=ethers, $=id=>document.getElementById(id);
+
+const FLOOR=["function positionsOf(address) view returns (uint256[])",
+ "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)"];
+const BAL=["function balanceOf(address) view returns (uint256)",
+ "function convertToAssets(uint256) view returns (uint256)",
+ "function decimals() view returns (uint8)",
+ "function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
+
+let provider,signer,me,read;
+let trades=[], lp={dep:0n,wd:0n,shares:0n,value:0n}, openRows=[];
+
+const n2=(v,d,p=2)=>Number(E.formatUnits(v,d)).toLocaleString(undefined,{minimumFractionDigits:p,maximumFractionDigits:p});
+const money=v=>v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const short=a=>a.slice(0,6)+"…"+a.slice(-4);
+const sgn=v=>(v>=0?"+":"-")+money(Math.abs(v));
+function rp(){ return read ||= new E.FallbackProvider(
+  RPCS.map((u,i)=>({provider:new E.JsonRpcProvider(u,CHAIN,{staticNetwork:true}),priority:i+1,stallTimeout:2500,weight:1})),CHAIN); }
+
+/* ── history ──────────────────────────────────────────────────────────
+   Closed positions are deleted from contract storage on close, so trade
+   history exists only in events. Opened and Closed are joined by id: the
+   Closed event carries the outcome, the Opened event carries what was put
+   in, and only both together give a net result. */
+const iFloor=new E.Interface([
+ "event Opened(uint256 indexed id,address indexed trader,uint256 indexed marketId,bool isLong,uint256 size,uint256 margin,uint256 entryPrice,uint256 fee)",
+ "event Closed(uint256 indexed id,address indexed trader,uint256 exitPrice,int256 pnl,int256 funding,uint256 fee,uint256 returned)",
+ "event Liquidated(uint256 indexed id,address indexed trader,address indexed keeper,uint256 exitPrice,uint256 reward,uint256 toPool)"]);
+const iBal=new E.Interface([
+ "event Deposit(address indexed sender,address indexed owner,uint256 assets,uint256 shares)",
+ "event Withdraw(address indexed sender,address indexed receiver,address indexed owner,uint256 assets,uint256 shares)"]);
+
+/** Walks back in chunks, halving on refusal rather than abandoning the walk. */
+async function scan(p, address, topics, latest, back=120000){
+  const out=[]; let from=latest, span=5000, guard=0;
+  const floor=Math.max(0,latest-back);
+  while(from>floor && guard++<60){
+    const lo=Math.max(floor,from-span);
+    try{
+      const logs=await p.getLogs({address,topics,fromBlock:lo,toBlock:from});
+      out.push(...logs);
+    }catch(e){ if(span>500){span=Math.floor(span/2); continue;} break; }
+    from=lo-1;
+  }
+  return out;
+}
+
+async function loadHistory(p){
+  if(!me) return;
+  const pad=E.zeroPadValue(me,32);
+  const latest=await p.getBlockNumber();
+
+  const [op,cl,lq,dp,wd]=await Promise.all([
+    scan(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest),
+    scan(p,A.floorplan,[E.id("Closed(uint256,address,uint256,int256,int256,uint256,uint256)"),null,pad],latest),
+    scan(p,A.floorplan,[E.id("Liquidated(uint256,address,address,uint256,uint256,uint256)"),null,pad],latest),
+    scan(p,A.ballast,[E.id("Deposit(address,address,uint256,uint256)"),null,pad],latest),
+    scan(p,A.ballast,[E.id("Withdraw(address,address,address,uint256,uint256)"),null,pad],latest),
+  ]);
+
+  const opens=new Map();
+  for(const l of op){ try{
+    const d=iFloor.parseLog(l); if(!d) continue;
+    opens.set(d.args[0].toString(),{
+      market:Number(d.args[2]), isLong:d.args[3], size:d.args[4],
+      margin:d.args[5], entry:d.args[6], openFee:d.args[7], block:l.blockNumber});
+  }catch{} }
+
+  const out=[];
+  for(const l of cl){ try{
+    const d=iFloor.parseLog(l); if(!d) continue;
+    const id=d.args[0].toString(), o=opens.get(id); if(!o) continue;
+    const ret=d.args[6];
+    // Everything the trade cost: margin kept by the engine plus the fee
+    // taken at open. Anything less coming back is a loss.
+    const inAmt=o.margin+o.openFee;
+    out.push({id,kind:"closed",market:o.market,isLong:o.isLong,size:o.size,
+      margin:o.margin,entry:o.entry,exit:d.args[1],pnl:d.args[2],funding:d.args[3],
+      fees:o.openFee+d.args[5],returned:ret,net:ret-inAmt,block:l.blockNumber});
+  }catch{} }
+
+  for(const l of lq){ try{
+    const d=iFloor.parseLog(l); if(!d) continue;
+    const id=d.args[0].toString(), o=opens.get(id); if(!o) continue;
+    // Liquidation returns nothing to the trader — the whole stake is gone.
+    const inAmt=o.margin+o.openFee;
+    out.push({id,kind:"liq",market:o.market,isLong:o.isLong,size:o.size,
+      margin:o.margin,entry:o.entry,exit:d.args[3],pnl:-inAmt,funding:0n,
+      fees:o.openFee,returned:0n,net:-inAmt,block:l.blockNumber});
+  }catch{} }
+
+  out.sort((a,b)=>a.block-b.block);
+  trades=out;
+
+  lp.dep=0n; lp.wd=0n;
+  for(const l of dp){ try{ lp.dep+=iBal.parseLog(l).args[2]; }catch{} }
+  for(const l of wd){ try{ lp.wd +=iBal.parseLog(l).args[3]; }catch{} }
+}
+
+/* ── equity curve ─────────────────────────────────────────────────── */
+function drawCurve(){
+  const box=$("curve");
+  if(trades.length<1){
+    box.innerHTML='<div class="none">No closed trades yet.<br>The curve appears once you have closed a position — open one on the trade page.</div>';
+    return;
+  }
+  const pts=[]; let run=0;
+  pts.push(0);
+  for(const t of trades){ run+=Number(E.formatUnits(t.net,6)); pts.push(run); }
+
+  const W=Math.max(360,Math.round(box.clientWidth||900));
+  const H=Math.max(180,Math.round(box.clientHeight||260));
+  const PL=8,PR=66,PT=12,PB=22;
+  let lo=Math.min(0,...pts), hi=Math.max(0,...pts);
+  if(hi===lo){hi=lo+1;lo=lo-1;}
+  const pad=(hi-lo)*0.15; lo-=pad; hi+=pad;
+  const X=i=>PL+(pts.length>1?i/(pts.length-1):0)*(W-PL-PR);
+  const Y=v=>PT+(hi-v)/(hi-lo)*(H-PT-PB);
+
+  let grid="";
+  for(let i=0;i<=3;i++){
+    const v=lo+(hi-lo)*i/3,y=Y(v);
+    grid+=`<line class="gl" x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"/>`
+       +  `<text class="ax" x="${W-PR+6}" y="${(y+3.5).toFixed(1)}">${money(v)}</text>`;
+  }
+  const zy=Y(0);
+  const line=pts.map((v,i)=>`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+  const last=pts[pts.length-1];
+  const fill=`${PL},${zy.toFixed(1)} ${line} ${X(pts.length-1).toFixed(1)},${zy.toFixed(1)}`;
+  const col=last>=0?"var(--jade)":"var(--rust)";
+
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+      aria-label="Cumulative net result across ${trades.length} closed trades">
+    ${grid}
+    <polygon class="curvefill" points="${fill}" fill="${col}"/>
+    <polyline class="curveline" points="${line}" stroke="${col}"/>
+    <line class="zero" x1="${PL}" y1="${zy.toFixed(1)}" x2="${W-PR}" y2="${zy.toFixed(1)}"/>
+    <circle class="pt" cx="${X(pts.length-1).toFixed(1)}" cy="${Y(last).toFixed(1)}" r="3.5" fill="${col}"/>
+    <text class="ax" x="${PL}" y="${H-6}">trade 1</text>
+    <text class="ax" x="${(W-PR-46).toFixed(0)}" y="${H-6}">trade ${trades.length}</text>
+  </svg>`;
+}
+
+/* ── summary ──────────────────────────────────────────────────────── */
+function paintStats(){
+  const net=trades.reduce((s,t)=>s+Number(E.formatUnits(t.net,6)),0);
+  const fees=trades.reduce((s,t)=>s+Number(E.formatUnits(t.fees,6)),0);
+  const fund=trades.reduce((s,t)=>s+Number(E.formatUnits(t.funding,6)),0);
+  const wins=trades.filter(t=>t.net>0n).length;
+  const wr=trades.length?(wins/trades.length*100):0;
+  const lpVal=Number(E.formatUnits(lp.value,6));
+  const lpIn=Number(E.formatUnits(lp.dep-lp.wd,6));
+  const lpRet=lpVal-lpIn;
+
+  $("stats").innerHTML=`
+    <div class="stat"><span class="k">Realized net</span>
+      <span class="v ${net>=0?"ok":"bad"}">${sgn(net)}</span>
+      <span class="s">across ${trades.length} closed trade${trades.length===1?"":"s"}</span></div>
+    <div class="stat"><span class="k">Win rate</span>
+      <span class="v">${trades.length?wr.toFixed(0)+"%":"—"}</span>
+      <span class="s">${wins} up · ${trades.length-wins} down</span></div>
+    <div class="stat"><span class="k">Fees paid</span>
+      <span class="v">${money(fees)}</span>
+      <span class="s">open + close, to the pool</span></div>
+    <div class="stat"><span class="k">Funding</span>
+      <span class="v ${fund<=0?"ok":"bad"}">${fund===0?"0.00":sgn(-fund)}</span>
+      <span class="s">${fund>0?"you paid the pool":"the pool paid you"}</span></div>
+    <div class="stat"><span class="k">LP position</span>
+      <span class="v">${lp.shares>0n?money(lpVal):"—"}</span>
+      <span class="s">${lp.shares>0n?money(lpIn)+" deposited":"not a depositor"}</span></div>
+    <div class="stat"><span class="k">LP return</span>
+      <span class="v ${lpRet>=0?"ok":"bad"}">${lp.shares>0n?sgn(lpRet):"—"}</span>
+      <span class="s">fees earned as the house</span></div>`;
+}
+
+/* ── tables ───────────────────────────────────────────────────────── */
+function paintTrades(){
+  if(!trades.length){
+    $("tabTrades").innerHTML=`<div class="none">${me?"No closed trades found for this wallet.":"Connect a wallet to load your history."}<br>
+      History is read from contract events — closed positions are deleted from storage, so this is the only record.</div>`;
+    return;
+  }
+  const rows=[...trades].reverse().map(t=>`<tr>
+    <td>${t.kind==="liq"?'<span class="tag liq">LIQ</span> ':""}<span class="tag ${t.isLong?"long":"short"}">${t.isLong?"LONG":"SHORT"}</span> ${MKT[t.market]||t.market}</td>
+    <td>${n2(t.size,6,0)}</td>
+    <td>${n2(t.entry,18)}</td>
+    <td>${n2(t.exit,18)}</td>
+    <td>${n2(t.fees,6)}</td>
+    <td>${Number(t.funding)===0?"0.00":(t.funding>0n?"-":"+")+n2(t.funding<0n?-t.funding:t.funding,6)}</td>
+    <td class="${t.net>=0n?"ok":"bad"}">${t.net>=0n?"+":"-"}${n2(t.net<0n?-t.net:t.net,6)}</td>
+    <td><a href="${SCAN}/address/${A.floorplan}" target="_blank" rel="noopener" style="color:var(--sky)">#${t.id}</a></td></tr>`).join("");
+  $("tabTrades").innerHTML=`<table><thead><tr><th>Market</th><th>Size</th><th>Entry</th><th>Exit</th>
+    <th>Fees</th><th>Funding</th><th>Net</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function paintOpen(){
+  if(!openRows.length){
+    $("tabOpen").innerHTML='<div class="none">Nothing open.</div>'; return;
+  }
+  const rows=openRows.map(r=>`<tr>
+    <td><span class="tag ${r.isLong?"long":"short"}">${r.isLong?"LONG":"SHORT"}</span> ${MKT[r.market]||r.market}</td>
+    <td>${n2(r.size,6,0)}</td><td>${n2(r.margin,6)}</td>
+    <td>${n2(r.entry,18)}</td><td>${n2(r.mark,18)}</td>
+    <td class="${r.pnl>=0n?"ok":"bad"}">${r.pnl>=0n?"+":"-"}${n2(r.pnl<0n?-r.pnl:r.pnl,6)}</td>
+    <td class="${r.danger?"bad":"warn"}">${n2(r.liq,18)}</td></tr>`).join("");
+  $("tabOpen").innerHTML=`<table><thead><tr><th>Market</th><th>Size</th><th>Margin</th>
+    <th>Entry</th><th>Mark</th><th>Unrealized</th><th>Liq. price</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function paintLp(){
+  const val=Number(E.formatUnits(lp.value,6));
+  const inn=Number(E.formatUnits(lp.dep-lp.wd,6));
+  const ret=val-inn;
+  const pct=inn>0?(ret/inn*100):0;
+  $("tabLp").innerHTML = lp.shares>0n || lp.dep>0n
+    ? `<table><tbody>
+        <tr><td>Shares held</td><td>${n2(lp.shares,18,6)} BLST</td></tr>
+        <tr><td>Deposited (net of withdrawals)</td><td>${money(inn)} CHIP</td></tr>
+        <tr><td>Redeemable now</td><td>${money(val)} CHIP</td></tr>
+        <tr><td>Return</td><td class="${ret>=0?"ok":"bad"}">${sgn(ret)} CHIP (${pct>=0?"+":""}${pct.toFixed(3)}%)</td></tr>
+      </tbody></table>
+      <div class="none" style="text-align:left">As a depositor you are the counterparty to every trade on the desk.
+      Traders who lose pay into the pool and traders who win are paid from it, so this number moves against them —
+      and every open and close fee lands here regardless of who was right.</div>`
+    : '<div class="none">Not a depositor.<br>Deposits are made on the setup page — depositors take the other side of every trade and collect the fees.</div>';
+}
+
+document.querySelectorAll(".tb").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tb").forEach(x=>x.classList.toggle("on",x===b));
+  $("tabTrades").hidden=b.dataset.t!=="trades";
+  $("tabOpen").hidden  =b.dataset.t!=="open";
+  $("tabLp").hidden    =b.dataset.t!=="lp";
+});
+
+/* ── refresh ──────────────────────────────────────────────────────── */
+async function refresh(){
+  const p=provider||rp();
+  if(me){
+    try{
+      const b=new E.Contract(A.ballast,BAL,p);
+      lp.shares=await b.balanceOf(me);
+      lp.value =lp.shares>0n ? await b.convertToAssets(lp.shares) : 0n;
+    }catch(e){}
+    try{
+      const f=new E.Contract(A.floorplan,FLOOR,p);
+      const ids=await f.positionsOf(me);
+      openRows=[];
+      for(const id of ids){
+        try{
+          const v=await f.positionView(id); const q=v[0];
+          if(q.owner===E.ZeroAddress) continue;
+          openRows.push({market:Number(q.marketId),isLong:q.isLong,size:q.size,margin:q.margin,
+            entry:q.entryPrice,mark:v[1],pnl:v[2],liq:v[6],danger:v[7]});
+        }catch{}
+      }
+    }catch(e){}
+    try{ await loadHistory(p); }catch(e){}
+  }
+  paintStats(); drawCurve(); paintTrades(); paintOpen(); paintLp();
+  $("foot").textContent = me
+    ? `Read from contract events on Floorplan ${short(A.floorplan)} and Ballast ${short(A.ballast)}. `
+      + `Public RPCs cap log ranges, so a very long history may not fully load — what is shown is what could be read.`
+    : "Connect a wallet to load history.";
+}
+
+$("btnConnect").onclick=async()=>{
+  if(!window.ethereum){ $("foot").textContent="No wallet found."; return; }
+  try{
+    provider=new E.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts",[]);
+    if(Number((await provider.getNetwork()).chainId)!==CHAIN){
+      try{ await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN_HEX}]}); }
+      catch(sw){ if(sw.code===4902) await window.ethereum.request({method:"wallet_addEthereumChain",params:[{
+        chainId:CHAIN_HEX,chainName:"Arc Network Testnet",
+        nativeCurrency:{name:"USDC",symbol:"USDC",decimals:18},
+        rpcUrls:[RPCS[0]],blockExplorerUrls:[SCAN]}]}); else throw sw; }
+      provider=new E.BrowserProvider(window.ethereum);
+    }
+    signer=await provider.getSigner(); me=await signer.getAddress();
+    $("dot").className="dot on"; $("who").textContent=short(me);
+    refresh();
+  }catch(e){ $("foot").textContent=e.shortMessage||e.message; }
+};
+
+refresh(); setInterval(refresh,30000);
+let rz; addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(drawCurve,150);});
+if(window.ethereum){ window.ethereum.on?.("accountsChanged",()=>location.reload()); }
+</script>
+</body>
+</html>

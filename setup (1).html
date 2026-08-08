@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Pit — setup &amp; admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a1420;        /* field */
+  --slab:#16263f;       /* panel */
+  --edge:#22364f;       /* rules */
+  --paper:#f5efe3;      /* primary text */
+  --mute:#8ba3bd;       /* secondary text */
+  --sky:#6fb7e3;        /* live / action */
+  --jade:#5fa88a;       /* settled / ok */
+  --rust:#b5512f;       /* fault */
+  --amber:#d9a441;      /* waiting */
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--ink);color:var(--paper);
+  font:15px/1.55 "IBM Plex Mono",ui-monospace,monospace;
+  padding:0 0 80px;
+}
+.wrap{max-width:860px;margin:0 auto;padding:0 18px}
+
+/* ── masthead ─────────────────────────────────────────── */
+header{border-bottom:1px solid var(--edge);padding:26px 0 18px;margin-bottom:26px}
+h1{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-weight:700;font-size:30px;letter-spacing:.02em;text-transform:uppercase;
+}
+h1 span{color:var(--sky)}
+.sub{color:var(--mute);font-size:13px;margin-top:5px}
+.net{
+  display:inline-flex;align-items:center;gap:7px;margin-top:12px;
+  border:1px solid var(--edge);border-radius:2px;padding:5px 10px;font-size:12px;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--rust)}
+.dot.on{background:var(--jade)}
+
+/* ── tape: the live market strip ──────────────────────── */
+.tape{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--edge);
+      border:1px solid var(--edge);margin-bottom:26px}
+.tick{background:var(--slab);padding:13px 14px}
+.tick .sym{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;
+           font-size:13px;letter-spacing:.09em;color:var(--mute);text-transform:uppercase}
+.tick .px{font-size:21px;font-weight:500;margin:3px 0;font-variant-numeric:tabular-nums}
+.tick .st{font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+.st.ok{color:var(--jade)} .st.warn{color:var(--amber)} .st.bad{color:var(--rust)}
+.tick .age{font-size:11px;color:var(--mute);margin-top:2px}
+
+/* ── panels ───────────────────────────────────────────── */
+section{border:1px solid var(--edge);background:var(--slab);margin-bottom:20px}
+.head{display:flex;align-items:baseline;gap:11px;padding:13px 16px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.step{
+  font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:12px;
+  color:var(--ink);background:var(--mute);border-radius:2px;padding:1px 7px;letter-spacing:.06em;
+}
+.step.done{background:var(--jade)} .step.now{background:var(--sky)}
+h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:17px;letter-spacing:.02em}
+.how{padding:11px 16px;color:var(--mute);font-size:12.5px;line-height:1.6;border-bottom:1px solid var(--edge)}
+.body{padding:15px 16px}
+
+/* ── data rows ────────────────────────────────────────── */
+.row{display:flex;justify-content:space-between;gap:14px;padding:6px 0;
+     border-bottom:1px dotted var(--edge);font-size:13.5px}
+.row:last-child{border-bottom:0}
+.row .k{color:var(--mute)}
+.row .v{font-variant-numeric:tabular-nums;text-align:right;word-break:break-all}
+.v.ok{color:var(--jade)} .v.bad{color:var(--rust)} .v.warn{color:var(--amber)}
+
+/* ── controls ─────────────────────────────────────────── */
+.act{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:13px}
+button{
+  font:600 13px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.05em;text-transform:uppercase;
+  background:var(--sky);color:var(--ink);border:0;border-radius:2px;padding:10px 16px;cursor:pointer;
+}
+button:hover:not(:disabled){filter:brightness(1.12)}
+button:focus-visible{outline:2px solid var(--paper);outline-offset:2px}
+button:disabled{background:var(--edge);color:var(--mute);cursor:not-allowed}
+button.ghost{background:transparent;color:var(--sky);border:1px solid var(--edge)}
+button.tab{background:transparent;color:var(--mute);border:1px solid var(--edge);padding:7px 13px}
+button.tab.on{background:var(--sky);color:var(--ink);border-color:var(--sky)}
+.chart svg{width:100%;height:auto;display:block}
+.chart .gl{stroke:var(--edge);stroke-width:1}
+.chart .ln{fill:none;stroke:var(--sky);stroke-width:1.6;stroke-linejoin:round}
+.chart .ar{fill:var(--sky);opacity:.10}
+.chart text{font:11px "IBM Plex Mono",monospace;fill:var(--mute)}
+.chart .last{fill:var(--sky)}
+input{
+  font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--paper);
+  border:1px solid var(--edge);border-radius:2px;padding:9px 11px;width:190px;
+}
+input:focus,select:focus{outline:none;border-color:var(--sky)}
+select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--paper);
+       border:1px solid var(--edge);border-radius:2px;padding:9px 11px}
+.pos{border:1px solid var(--edge);padding:11px;margin-bottom:9px}
+.pos .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:7px;flex-wrap:wrap}
+.pos .tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:12px;
+          letter-spacing:.06em;padding:1px 7px;border-radius:2px;color:var(--ink)}
+.tag.long{background:var(--jade)} .tag.short{background:var(--rust);color:var(--paper)}
+.pos.danger{border-color:var(--rust)}
+.warnbar{background:var(--rust);color:var(--paper);font-size:11.5px;padding:5px 8px;margin:-11px -11px 9px}
+.why{font-size:12px;color:var(--amber);margin-top:9px;line-height:1.5}
+.why.err{color:var(--rust)}
+.why.ok{color:var(--jade)}
+.hint{font-size:11.5px;color:var(--mute);margin-top:5px}
+
+/* ── log ──────────────────────────────────────────────── */
+#log{font-size:12px;color:var(--mute);max-height:210px;overflow:auto;line-height:1.75}
+#log div{padding:2px 0;border-bottom:1px dotted var(--edge);word-break:break-all}
+#log a{color:var(--sky)}
+.addr{font-size:11.5px;color:var(--mute)}
+
+@media (max-width:620px){
+  .tape{grid-template-columns:1fr}
+  input{width:100%}
+  .act{flex-direction:column;align-items:stretch}
+  button{width:100%}
+}
+@media (prefers-reduced-motion:no-preference){
+  .tick .px{transition:color .25s}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Setup <span>&amp; admin</span></h1>
+  <div class="sub"><a href="trade.html" style="color:var(--sky)">&larr; trading</a> · <a href="portfolio.html" style="color:var(--sky)">portfolio</a> · one-time bring-up, collateral minting, and owner calls</div>
+  <div class="net"><span class="dot" id="netdot"></span><span id="netlabel">Not connected</span></div>
+</header>
+
+<!-- live market strip -->
+<div class="tape" id="tape"></div>
+
+<!-- 1 ── wallet -->
+<section>
+  <div class="head"><span class="step" id="s1">01</span><h2>Wallet</h2></div>
+  <div class="how">Everything below signs from this address. The owner keys on PriceEngine and Ballast are the deployer, so use that wallet or the admin calls will revert.</div>
+  <div class="body">
+    <div class="row"><span class="k">Address</span><span class="v" id="acct">—</span></div>
+    <div class="row"><span class="k">Chain</span><span class="v" id="chain">—</span></div>
+    <div class="row"><span class="k">Gas balance (USDC)</span><span class="v" id="gas">—</span></div>
+    <div class="act"><button id="btnConnect">Connect wallet</button></div>
+    <div class="why" id="why1"></div>
+  </div>
+</section>
+
+<!-- 2 ── chips -->
+<section>
+  <div class="head"><span class="step" id="s2">02</span><h2>Test collateral</h2>
+    <span class="addr" id="aChips"></span></div>
+  <div class="how">Chips stands in for USDC because the Arc faucet gives one dollar a day, which cannot seed a pool deep enough for any number on this desk to mean anything. Six decimals, open mint, worthless on purpose. Each faucet call mints 100,000.</div>
+  <div class="body">
+    <div class="row"><span class="k">Your balance</span><span class="v" id="chipBal">—</span></div>
+    <div class="row"><span class="k">Approved to Ballast</span><span class="v" id="allow">—</span></div>
+    <div class="act">
+      <button id="btnFaucet">Mint 100,000</button>
+      <button id="btnFaucet5" class="ghost">Mint 500,000</button>
+    </div>
+    <div class="why" id="why2"></div>
+  </div>
+</section>
+
+<!-- 3 ── seed -->
+<section>
+  <div class="head"><span class="step" id="s3">03</span><h2>Seed the vault</h2>
+    <span class="addr" id="aBallast"></span></div>
+  <div class="how">Seeding mints locked shares to a burn address, which puts a permanent floor under total supply. Until it runs, every deposit reverts — an unseeded vault is exactly the state the first-depositor attack needs. This can only happen once, and only the owner can do it.</div>
+  <div class="body">
+    <div class="row"><span class="k">Vault state</span><span class="v" id="vState">—</span></div>
+    <div class="row"><span class="k">Share decimals</span><span class="v" id="vDec">—</span></div>
+    <div class="row"><span class="k">Locked shares</span><span class="v" id="vDead">—</span></div>
+    <div class="act">
+      <input id="seedAmt" value="1000" inputmode="decimal">
+      <button id="btnSeed">Approve &amp; seed</button>
+    </div>
+    <div class="hint">Amount in whole Chips. Runs the approval and the seed as two signatures.</div>
+    <div class="why" id="why3"></div>
+  </div>
+</section>
+
+<!-- 4 ── deposit -->
+<section>
+  <div class="head"><span class="step" id="s4">04</span><h2>Pool depth</h2></div>
+  <div class="how">This is the money that takes the other side of every trade. Traders who win are paid from here; traders who lose pay into here. Deeper means the desk can carry larger positions before it runs out of room to honour them.</div>
+  <div class="body">
+    <div class="row"><span class="k">Total assets</span><span class="v" id="bAssets">—</span></div>
+    <div class="row"><span class="k">Idle (withdrawable)</span><span class="v" id="bIdle">—</span></div>
+    <div class="row"><span class="k">Reserved against positions</span><span class="v" id="bRes">—</span></div>
+    <div class="row"><span class="k">Your shares</span><span class="v" id="bShares">—</span></div>
+    <div class="row"><span class="k">Assets per share</span><span class="v" id="bPps">—</span></div>
+    <div class="row"><span class="k">Liability feed</span><span class="v" id="bHealth">—</span></div>
+    <div class="act">
+      <input id="depAmt" value="300000" inputmode="decimal">
+      <button id="btnDeposit">Approve &amp; deposit</button>
+    </div>
+    <div class="why" id="why4"></div>
+  </div>
+</section>
+
+<!-- 5 ── engine -->
+<section>
+  <div class="head"><span class="step" id="s5">05</span><h2>Price engine</h2>
+    <span class="addr" id="aEngine"></span></div>
+  <div class="how">The desk prices everything from here. A price older than the staleness window stops being a price and trading halts — a dead feeder shuts the desk rather than settling anyone against a stale print. US30 also closes outside its session, which is why it reads shut on a weekend.</div>
+  <div class="body">
+    <div class="row"><span class="k">Markets listed</span><span class="v" id="mCount">—</span></div>
+    <div class="row"><span class="k">Rejected pushes</span><span class="v" id="mRej">—</span></div>
+    <div class="act">
+      <input id="pxEth" placeholder="ETH" inputmode="decimal">
+      <input id="pxBtc" placeholder="BTC" inputmode="decimal">
+      <input id="pxUs30" placeholder="US30" inputmode="decimal">
+      <button id="btnPush">Push prices</button>
+    </div>
+    <div class="hint">Whole dollars. Blank fields are skipped. A move beyond the deviation limit is rejected on purpose — that breaker is what stops a typo from liquidating the book.</div>
+    <div class="why" id="why5"></div>
+  </div>
+</section>
+
+
+
+<!-- chart -->
+<section>
+  <div class="head"><h2>Price history</h2><span class="addr" id="chartMeta"></span></div>
+  <div class="how">Drawn from the engine's own PricePushed events, not an exchange feed — this is the price your positions actually settle against. Gaps mean the feeder skipped a push, and a flat run means it was rejected or down. Both are worth noticing.</div>
+  <div class="body">
+    <div class="act" id="chartTabs"></div>
+    <div id="chartBox" style="margin-top:12px"></div>
+    <div class="why" id="whyC"></div>
+  </div>
+</section>
+
+<!-- 06 ── ticket -->
+<section>
+  <div class="head"><span class="step" id="s6">06</span><h2>Order ticket</h2>
+    <span class="addr" id="aFloor"></span></div>
+  <div class="how">Size is the notional you control; margin is what you post against it. Leverage is size divided by margin and the engine caps it per market. Profit is capped at half your size and reserved in the pool the moment you open — a runner past that cap stops earning, which is the price of the pool being able to honour it at all.</div>
+  <div class="body">
+    <div class="act">
+      <select id="tkMkt"></select>
+      <select id="tkSide"><option value="long">Long</option><option value="short">Short</option></select>
+    </div>
+    <div class="act">
+      <input id="tkSize" value="1000" inputmode="decimal" placeholder="size">
+      <input id="tkMargin" value="100" inputmode="decimal" placeholder="margin">
+      <button id="btnOpen">Open</button>
+    </div>
+    <div class="row"><span class="k">Leverage</span><span class="v" id="tkLev">—</span></div>
+    <div class="row"><span class="k">Entry (live)</span><span class="v" id="tkPx">—</span></div>
+    <div class="row"><span class="k">Open fee</span><span class="v" id="tkFee">—</span></div>
+    <div class="row"><span class="k">Reserved from pool</span><span class="v" id="tkRes">—</span></div>
+    <div class="row"><span class="k">Est. liquidation</span><span class="v" id="tkLiq">—</span></div>
+    <div class="why" id="why6"></div>
+  </div>
+</section>
+
+<!-- 07 ── positions -->
+<section>
+  <div class="head"><span class="step" id="s7">07</span><h2>Open positions</h2></div>
+  <div class="how">Equity is margin plus profit, less funding and the close fee. When it falls to the maintenance level anyone can liquidate you and the remainder goes to the pool. Closing needs a live price, so a halted market traps a position until it reopens — margin can still be added to defend it.</div>
+  <div class="body"><div id="posList"><div class="row"><span class="k">—</span><span class="v">nothing open</span></div></div>
+    <div class="why" id="why7"></div></div>
+</section>
+
+<!-- 08 ── desk state -->
+<section>
+  <div class="head"><h2>Desk exposure</h2></div>
+  <div class="how">Skew is longs minus shorts. The pool is counterparty to everyone, so when longs outweigh shorts the pool is net short and collects funding from longs directly. Pool PnL is what the desk currently owes traders — it comes straight off the vault's net asset value.</div>
+  <div class="body"><div id="deskList"></div></div>
+</section>
+
+<!-- 09 ── admin -->
+<section>
+  <div class="head"><h2>Admin</h2></div>
+  <div class="how">Owner-only calls. These revert from any other wallet. Authorising a pusher is what lets the feeder publish prices — nothing trades until that is done and the feeder is running.</div>
+  <div class="body">
+    <div class="row"><span class="k">You are owner</span><span class="v" id="isOwner">—</span></div>
+    <div class="act">
+      <input id="pusherAddr" placeholder="feeder address">
+      <button id="btnPusher">Authorise pusher</button>
+    </div>
+    <div class="act">
+      <input id="fpId" placeholder="market id" inputmode="numeric" style="width:110px">
+      <input id="fpPx" placeholder="price" inputmode="decimal" style="width:150px">
+      <button id="btnForce" class="ghost">Force push</button>
+    </div>
+    <div class="hint">Force push skips the deviation breaker. For weekend reopens and nothing else.</div>
+    <div class="why" id="why9"></div>
+  </div>
+</section>
+
+<section>
+  <div class="head"><h2>Activity</h2></div>
+  <div class="body"><div id="log"><div>Ready. Connect a wallet to read chain state.</div></div></div>
+</section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+<script>
+/* ─── addresses ─────────────────────────────────────────────────────── */
+const A = {
+  engine : "0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
+  chips  : "0x207A26e236520b41e98098dCd656D453CDA931d6",
+  ballast: "0x5De190b7dd6eD5B53596859710E0De1d6613bD68",
+  floorplan:"0x7aF178595B59fF39cB2f2c37185171922a79677C",
+};
+const CHAIN = 5042002;
+const CHAIN_HEX = "0x4CEF52";                       // 5042002
+const RPCS = [                                      // browser-safe only
+  "https://rpc.blockdaemon.testnet.arc.network",
+  "https://arc-testnet.drpc.org",
+  "https://rpc.quicknode.testnet.arc.network",
+  "https://5042002.rpc.thirdweb.com",
+];
+const SCAN = "https://testnet.arcscan.app";
+const MKT = [{id:1,sym:"ETH",lev:50},{id:2,sym:"BTC",lev:50},{id:3,sym:"US30",lev:20}];
+const STATUS = ["OK","NOT LISTED","PAUSED","NO PRICE","STALE","MARKET CLOSED"];
+
+/* ─── abis ──────────────────────────────────────────────────────────── */
+const ERC20 = [
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)",
+  "function decimals() view returns (uint8)",
+  "function faucet()",
+  "function mint(address,uint256)",
+];
+const BALLAST = [
+  "function stats() view returns (uint256 assets,uint256 raw,uint256 idle,uint256 reserved,uint256 supply,uint256 assetsPerShare,bool healthy,bool ready)",
+  "function initialised() view returns (bool)",
+  "function initialise(uint256)",
+  "function deposit(uint256,address) returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function owner() view returns (address)",
+  "function perp() view returns (address)",
+  "function DEAD_SHARES() view returns (uint256)",
+];
+const FLOOR = [
+  "function open(uint256,bool,uint256,uint256) returns (uint256)",
+  "function close(uint256)",
+  "function addMargin(uint256,uint256)",
+  "function liquidate(uint256)",
+  "function positionsOf(address) view returns (uint256[])",
+  "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)",
+  "function marketView(uint256) view returns (uint256 longSize,uint256 shortSize,int256 skew,int256 fundingHourly,int256 cumFunding,uint256 reserved,uint256 price,uint8 status)",
+  "function poolPnl() view returns (int256)",
+  "function maxProfitBps() view returns (uint256)",
+  "function minSize() view returns (uint256)",
+  "function openFeeBps() view returns (uint256)",
+  "function ballast() view returns (address)",
+];
+const ENGINE = [
+  "function peek(uint256) view returns (uint256 value,uint64 updatedAt,uint64 roundId,uint8 s)",
+  "function marketCount() view returns (uint256)",
+  "function rejectedPushes(uint256) view returns (uint256)",
+  "function pushPrices(uint256[],uint128[])",
+  "function owner() view returns (address)",
+  "function isPusher(address) view returns (bool)",
+  "function setPusher(address,bool)",
+  "function forcePush(uint256,uint128)",
+];
+
+/* ─── state ─────────────────────────────────────────────────────────── */
+let provider, signer, me, read;
+const $ = id => document.getElementById(id);
+const E = ethers;
+
+function log(msg, hash){
+  const d = document.createElement("div");
+  const t = new Date().toLocaleTimeString();
+  d.innerHTML = `${t} — ${msg}` + (hash ? ` <a href="${SCAN}/tx/${hash}" target="_blank" rel="noopener">view</a>` : "");
+  $("log").prepend(d);
+}
+function say(el, msg, kind){ const n=$(el); n.textContent=msg||""; n.className="why"+(kind?" "+kind:""); }
+function fmt(v, dec, places=2){
+  const s = E.formatUnits(v, dec);
+  const n = Number(s);
+  if (!isFinite(n)) return s;
+  return n.toLocaleString(undefined,{minimumFractionDigits:places,maximumFractionDigits:places});
+}
+const short = a => a.slice(0,6)+"…"+a.slice(-4);
+
+/* read-only provider so the page shows real state before any wallet connects */
+function readProvider(){
+  if (read) return read;
+  read = new E.FallbackProvider(
+    RPCS.map((u,i)=>({ provider:new E.JsonRpcProvider(u,CHAIN,{staticNetwork:true}), priority:i+1, stallTimeout:2500, weight:1 })),
+    CHAIN
+  );
+  return read;
+}
+const C = {
+  chips  : p => new E.Contract(A.chips,   ERC20,   p),
+  ballast: p => new E.Contract(A.ballast, BALLAST, p),
+  engine : p => new E.Contract(A.engine,  ENGINE,  p),
+  floor  : p => new E.Contract(A.floorplan, FLOOR, p),
+};
+
+/* ─── tape ──────────────────────────────────────────────────────────── */
+function paintTape(rows){
+  $("tape").innerHTML = rows.map(r=>{
+    const cls = r.s===0 ? "ok" : (r.s===5 ? "warn" : "bad");
+    return `<div class="tick">
+      <div class="sym">${r.sym}</div>
+      <div class="px">${r.px}</div>
+      <div class="st ${cls}">${STATUS[r.s] ?? "?"}</div>
+      <div class="age">${r.age}</div>
+    </div>`;
+  }).join("");
+}
+paintTape(MKT.map(m=>({sym:m.sym,px:"—",s:3,age:"reading chain…"})));
+
+/* ─── refresh ───────────────────────────────────────────────────────── */
+async function refresh(){
+  const p = provider || readProvider();
+
+  /* engine + tape */
+  try{
+    const en = C.engine(p);
+    const now = Math.floor(Date.now()/1000);
+    const rows = [];
+    let rej = 0n;
+    for (const m of MKT){
+      const [value,updatedAt,,s] = await en.peek(m.id);
+      rej += await en.rejectedPushes(m.id);
+      const age = Number(updatedAt)===0 ? "never pushed"
+                : `${now-Number(updatedAt)}s ago`;
+      lastPx[m.id] = value; lastStatus[m.id] = Number(s);
+      pushLive(m.id, Number(E.formatUnits(value,18)), Number(updatedAt));
+      rows.push({ sym:m.sym, s:Number(s), age,
+        px: Number(value)===0 ? "—" : "$"+fmt(value,18,2) });
+    }
+    paintTape(rows);
+    await loadHistory(p);
+    drawChart();
+    $("mCount").textContent = (await en.marketCount()).toString();
+    $("mRej").textContent = rej.toString();
+    $("mRej").className = "v" + (rej>0n ? " warn" : "");
+    if (rows.some(r=>r.s===5))
+      say("why5","US30 reads closed because the cash session is over. That is the session logic working — ETH and BTC never close.","ok");
+  }catch(e){ log("Engine read failed: "+(e.shortMessage||e.message)); }
+
+  /* vault */
+  let vDec = 18, ready=false;
+  try{
+    const b = C.ballast(p);
+    const init = await b.initialised();
+    vDec = Number(await b.decimals());
+    $("vDec").textContent = vDec + "  (collateral 6 + offset " + (vDec-6) + ")";
+    $("vDead").textContent = init ? E.formatUnits(await b.DEAD_SHARES(), vDec) + " burned" : "not yet minted";
+    $("vState").textContent = init ? "Seeded" : "Not seeded — deposits blocked";
+    $("vState").className = "v " + (init ? "ok" : "warn");
+    $("s3").className = "step " + (init ? "done" : "now");
+    ready = init;
+
+    const st = await b.stats();
+    $("bAssets").textContent = fmt(st[0],6)+" CHIP";
+    $("bIdle").textContent   = fmt(st[2],6)+" CHIP";
+    $("bRes").textContent    = fmt(st[3],6)+" CHIP";
+    $("bPps").textContent    = init ? Number(E.formatUnits(st[5],6)).toFixed(6) : "—";
+    $("bHealth").textContent = st[6] ? "reachable" : "unreachable — NAV overstated";
+    $("bHealth").className   = "v " + (st[6] ? "ok" : "bad");
+    if (me){
+      const sh = await b.balanceOf(me);
+      $("bShares").textContent = fmt(sh,vDec,4)+" BLST";
+      $("s4").className = "step " + (sh>0n ? "done" : (ready?"now":""));
+    }
+    if (!init) say("why4","Seed the vault first. Deposits revert until the locked shares exist.","");
+    else if (st[3]>0n) say("why4","Reserved capital is committed to open positions and cannot be withdrawn until they close.","");
+    else say("why4","","");
+  }catch(e){ log("Vault read failed: "+(e.shortMessage||e.message)); }
+
+  /* perp */
+  try { await paintDesk(p); await paintPositions(p); quote(); }
+  catch(e){ log("Desk read failed: "+(e.shortMessage||e.message)); }
+
+  /* owner */
+  if (me){
+    try {
+      const o = await C.engine(p).owner();
+      const isO = o.toLowerCase() === me.toLowerCase();
+      $("isOwner").textContent = isO ? "yes" : "no — these calls will revert";
+      $("isOwner").className = "v " + (isO ? "ok" : "warn");
+    } catch(e){}
+  }
+
+  /* chips */
+  if (me){
+    try{
+      const c = C.chips(p);
+      const bal = await c.balanceOf(me);
+      const al  = await c.allowance(me, A.ballast);
+      $("chipBal").textContent = fmt(bal,6)+" CHIP";
+      $("allow").textContent   = fmt(al,6)+" CHIP";
+      $("s2").className = "step " + (bal>0n ? "done" : "now");
+      if (bal===0n) say("why2","No Chips yet. Mint some — nothing downstream works without collateral.","");
+      else say("why2","","");
+      $("gas").textContent = fmt(await p.getBalance(me),18,6);
+    }catch(e){ log("Token read failed: "+(e.shortMessage||e.message)); }
+  }
+}
+
+/* ─── wallet ────────────────────────────────────────────────────────── */
+async function connect(){
+  if (!window.ethereum){ say("why1","No wallet found. This page needs MetaMask or another injected wallet.","err"); return; }
+  try{
+    provider = new E.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts",[]);
+    const net = await provider.getNetwork();
+    if (Number(net.chainId) !== CHAIN){
+      try{
+        await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN_HEX}]});
+      }catch(sw){
+        if (sw.code === 4902){
+          await window.ethereum.request({method:"wallet_addEthereumChain",params:[{
+            chainId:CHAIN_HEX, chainName:"Arc Network Testnet",
+            nativeCurrency:{name:"USDC",symbol:"USDC",decimals:18},
+            rpcUrls:[RPCS[0]], blockExplorerUrls:[SCAN]
+          }]});
+        } else throw sw;
+      }
+      provider = new E.BrowserProvider(window.ethereum);
+    }
+    signer = await provider.getSigner();
+    me = await signer.getAddress();
+    $("acct").textContent = me;
+    $("chain").textContent = "Arc testnet 5042002";
+    $("netdot").className = "dot on";
+    $("netlabel").textContent = short(me);
+    $("s1").className = "step done";
+    $("btnConnect").textContent = "Reconnect";
+    say("why1","","");
+    log("Connected "+short(me));
+    refresh();
+  }catch(e){ say("why1", e.shortMessage||e.message, "err"); }
+}
+
+function needWallet(w){
+  if (!signer){ say(w,"Connect a wallet first.","err"); return true; }
+  return false;
+}
+async function send(fn, label, whyId){
+  try{
+    say(whyId,"Waiting for signature…","");
+    const tx = await fn();
+    say(whyId,"Submitted. Waiting for the block…","");
+    log(label+" submitted", tx.hash);
+    await tx.wait();
+    say(whyId,label+" confirmed.","ok");
+    log(label+" confirmed", tx.hash);
+    await refresh();
+  }catch(e){
+    const m = e.shortMessage || e.reason || e.message || "failed";
+    say(whyId, m, "err");
+    log(label+" failed: "+m);
+  }
+}
+
+/* ─── actions ───────────────────────────────────────────────────────── */
+$("btnConnect").onclick = connect;
+
+$("btnFaucet").onclick = () => {
+  if (needWallet("why2")) return;
+  send(()=>C.chips(signer).faucet(), "Mint 100,000 Chips", "why2");
+};
+$("btnFaucet5").onclick = () => {
+  if (needWallet("why2")) return;
+  send(()=>C.chips(signer).mint(me, E.parseUnits("500000",6)), "Mint 500,000 Chips", "why2");
+};
+
+$("btnSeed").onclick = async () => {
+  if (needWallet("why3")) return;
+  const amt = E.parseUnits(($("seedAmt").value||"0").trim(), 6);
+  if (amt === 0n){ say("why3","Enter an amount above zero.","err"); return; }
+  const c = C.chips(signer);
+  const al = await c.allowance(me, A.ballast);
+  if (al < amt){
+    await send(()=>c.approve(A.ballast, amt), "Approve "+$("seedAmt").value+" Chips", "why3");
+  }
+  await send(()=>C.ballast(signer).initialise(amt), "Seed the vault", "why3");
+};
+
+$("btnDeposit").onclick = async () => {
+  if (needWallet("why4")) return;
+  const amt = E.parseUnits(($("depAmt").value||"0").trim(), 6);
+  if (amt === 0n){ say("why4","Enter an amount above zero.","err"); return; }
+  const c = C.chips(signer);
+  const bal = await c.balanceOf(me);
+  if (bal < amt){ say("why4",`Only ${fmt(bal,6)} Chips on hand. Mint more, or deposit less.`,"err"); return; }
+  const al = await c.allowance(me, A.ballast);
+  if (al < amt){
+    await send(()=>c.approve(A.ballast, amt), "Approve "+$("depAmt").value+" Chips", "why4");
+  }
+  await send(()=>C.ballast(signer).deposit(amt, me), "Deposit into Ballast", "why4");
+};
+
+$("btnPush").onclick = () => {
+  if (needWallet("why5")) return;
+  const ids=[], vals=[];
+  [["pxEth",1],["pxBtc",2],["pxUs30",3]].forEach(([el,id])=>{
+    const v = ($(el).value||"").trim();
+    if (v){ ids.push(id); vals.push(E.parseUnits(v,18)); }
+  });
+  if (!ids.length){ say("why5","Enter at least one price.","err"); return; }
+  send(()=>C.engine(signer).pushPrices(ids, vals), "Push "+ids.length+" price(s)", "why5");
+};
+
+
+
+/* ─── price history ─────────────────────────────────────────────────── */
+let chartMkt = 1;
+const series = {1:[],2:[],3:[]};          // {t, p}
+let logsTried = false;
+
+$("chartTabs").innerHTML = MKT.map(m=>
+  `<button class="tab${m.id===1?' on':''}" data-mkt="${m.id}">${m.sym}</button>`).join("");
+$("chartTabs").querySelectorAll("[data-mkt]").forEach(b=>b.onclick=()=>{
+  chartMkt = Number(b.dataset.mkt);
+  $("chartTabs").querySelectorAll(".tab").forEach(x=>x.className="tab"+(Number(x.dataset.mkt)===chartMkt?" on":""));
+  drawChart();
+});
+
+/**
+ * Pull PricePushed history. Public RPCs cap getLogs ranges, so this walks
+ * backwards in chunks and stops at the first refusal rather than failing
+ * the whole read — a short chart beats no chart.
+ */
+async function loadHistory(p){
+  if (logsTried) return;
+  logsTried = true;
+  try{
+    const latest = await p.getBlockNumber();
+    const topic  = E.id("PricePushed(uint256,uint256,uint64,uint64)");
+    const iface  = new E.Interface(["event PricePushed(uint256 indexed id,uint256 value,uint64 roundId,uint64 at)"]);
+    let from = latest, span = 5000, got = 0;
+
+    for (let i=0; i<8 && from > 0; i++){
+      const lo = Math.max(0, from - span);
+      let logs;
+      try{
+        logs = await p.getLogs({ address:A.engine, topics:[topic], fromBlock:lo, toBlock:from });
+      }catch(e){ break; }                   // range refused — keep what we have
+      for (const l of logs){
+        try{
+          const d = iface.parseLog(l);
+          if (!d) continue;
+          // Positional, not named. ethers' Result extends Array, so `.at`
+          // resolves to Array.prototype.at — the method, not the event's
+          // `at` parameter. Reading it by name yields a function, and
+          // Number(function) is NaN, which silently flattens every point
+          // onto the same x position.
+          const id = Number(d.args[0]);
+          const t  = Number(d.args[3]);
+          const px = Number(E.formatUnits(d.args[1], 18));
+          if (series[id] && Number.isFinite(t) && t > 0 && Number.isFinite(px) && px > 0){
+            series[id].push({ t, p:px });
+            got++;
+          }
+        }catch{}
+      }
+      from = lo - 1;
+      if (got > 1200) break;
+    }
+    for (const k in series) series[k].sort((a,b)=>a.t-b.t);
+    say("whyC", got ? "" : "No history yet — the chart fills in as the feeder pushes.", got?"":"");
+  }catch(e){
+    say("whyC","Could not read history from this RPC. The chart will build up live instead.","");
+  }
+}
+
+/** Append the live tape reading so the chart keeps moving between log pulls. */
+function pushLive(id, price, at){
+  const s = series[id]; if (!s) return;
+  if (!Number.isFinite(price) || price <= 0) return;
+  if (!Number.isFinite(at)    || at    <= 0) return;
+  if (s.length && s[s.length-1].t >= at) return;
+  s.push({ t:at, p:price });
+  if (s.length > 2000) s.shift();
+}
+
+function drawChart(){
+  const s = (series[chartMkt] || []).filter(d =>
+    Number.isFinite(d.t) && Number.isFinite(d.p) && d.t > 0 && d.p > 0);
+  const sym = (MKT.find(m=>m.id===chartMkt)||{}).sym || "";
+  const box = $("chartBox");
+
+  if (s.length < 2){
+    box.innerHTML = `<div class="row"><span class="k">${sym}</span><span class="v">not enough points yet — needs two pushes</span></div>`;
+    $("chartMeta").textContent = "";
+    return;
+  }
+
+  const W=700, H=220, PL=8, PR=62, PT=12, PB=22;
+  const xs = s.map(d=>d.t), ys = s.map(d=>d.p);
+  const t0=Math.min(...xs), t1=Math.max(...xs);
+  let lo=Math.min(...ys), hi=Math.max(...ys);
+  if (hi===lo){ hi=lo*1.0005; lo=lo*0.9995; }
+  const pad=(hi-lo)*0.12; lo-=pad; hi+=pad;
+
+  const X = t => PL + (t-t0)/((t1-t0)||1) * (W-PL-PR);
+  const Y = v => PT + (hi-v)/((hi-lo)||1) * (H-PT-PB);
+
+  const pts = s.map(d=>`${X(d.t).toFixed(1)},${Y(d.p).toFixed(1)}`).join(" ");
+  const area = `${PL},${H-PB} ${pts} ${X(t1).toFixed(1)},${H-PB}`;
+
+  let grid="";
+  for (let i=0;i<=3;i++){
+    const v = lo + (hi-lo)*i/3, y = Y(v);
+    grid += `<line class="gl" x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"/>`
+         +  `<text x="${W-PR+6}" y="${(y+4).toFixed(1)}">${v.toLocaleString(undefined,{maximumFractionDigits:2})}</text>`;
+  }
+
+  const last = s[s.length-1];
+  const mins = Math.round((t1-t0)/60);
+  const stamp = ts => Number.isFinite(ts) && ts>0
+    ? new Date(ts*1000).toLocaleTimeString() : "";
+
+  box.innerHTML = `<div class="chart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+      aria-label="${sym} price, last ${mins} minutes">
+    ${grid}
+    <polygon class="ar" points="${area}"/>
+    <polyline class="ln" points="${pts}"/>
+    <circle cx="${X(last.t).toFixed(1)}" cy="${Y(last.p).toFixed(1)}" r="3" class="last"/>
+    <text x="${PL}" y="${H-6}">${stamp(t0)}</text>
+    <text x="${(W-PR-70).toFixed(0)}" y="${H-6}">${stamp(t1)}</text>
+  </svg></div>`;
+
+  const first = s[0].p, chg = (last.p/first - 1)*100;
+  $("chartMeta").textContent =
+    `${s.length} points${Number.isFinite(mins)&&mins>0?" · "+mins+"m":""} · ${chg>=0?"+":""}${chg.toFixed(2)}%`;
+}
+
+/* ─── ticket ────────────────────────────────────────────────────────── */
+$("tkMkt").innerHTML = MKT.map(m=>`<option value="${m.id}">${m.sym}</option>`).join("");
+
+let lastPx = {};                       // marketId -> 18dec price
+let lastStatus = {};
+
+function quote(){
+  const id   = Number($("tkMkt").value);
+  const side = $("tkSide").value === "long";
+  const size = Number($("tkSize").value||0);
+  const marg = Number($("tkMargin").value||0);
+  const meta = MKT.find(m=>m.id===id);
+
+  const fee  = size * 10 / 10000;            // openFeeBps default 10
+  const net  = marg - fee;
+  const lev  = net > 0 ? size/net : 0;
+
+  $("tkFee").textContent = fee.toFixed(2)+" CHIP";
+  $("tkRes").textContent = (size*0.5).toFixed(2)+" CHIP  (50% of size)";
+  $("tkLev").textContent = net>0 ? lev.toFixed(1)+"x  (max "+meta.lev+"x)" : "—";
+  $("tkLev").className   = "v " + (lev>meta.lev ? "bad" : "");
+
+  const px = lastPx[id] ? Number(E.formatUnits(lastPx[id],18)) : 0;
+  $("tkPx").textContent = px ? "$"+px.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : "no price";
+
+  if (px && net>0 && size>0){
+    // equity hits maintenance (1% of size) after this much adverse move
+    const room = net - size*0.001 - size*0.01;       // close fee + maintenance
+    const move = room * px / size;
+    const liq  = side ? px - move : px + move;
+    $("tkLiq").textContent = liq>0 ? "$"+liq.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : "immediate";
+  } else $("tkLiq").textContent = "—";
+
+  let msg = "", kind = "";
+  if (lastStatus[id] !== 0){ msg = `${meta.sym} is ${STATUS[lastStatus[id]] ?? "unavailable"} — opening will revert until it is live.`; kind="err"; }
+  else if (size < 10) { msg = "Minimum size is 10 CHIP."; kind="err"; }
+  else if (lev > meta.lev){ msg = `${lev.toFixed(1)}x exceeds the ${meta.lev}x cap on ${meta.sym}. Post more margin or cut size.`; kind="err"; }
+  else if (net <= 0){ msg = "Margin must exceed the open fee."; kind="err"; }
+  say("why6", msg, kind);
+  $("btnOpen").disabled = !!msg;
+}
+["tkMkt","tkSide","tkSize","tkMargin"].forEach(id=>{
+  $(id).addEventListener("input", quote); $(id).addEventListener("change", quote);
+});
+
+$("btnOpen").onclick = async () => {
+  if (needWallet("why6")) return;
+  const id = Number($("tkMkt").value);
+  const isLong = $("tkSide").value === "long";
+  const size = E.parseUnits(($("tkSize").value||"0").trim(),6);
+  const marg = E.parseUnits(($("tkMargin").value||"0").trim(),6);
+  const c = C.chips(signer);
+  const bal = await c.balanceOf(me);
+  if (bal < marg){ say("why6",`Only ${fmt(bal,6)} CHIP on hand for ${fmt(marg,6)} of margin.`,"err"); return; }
+  const al = await c.allowance(me, A.floorplan);
+  if (al < marg) await send(()=>c.approve(A.floorplan, marg), "Approve margin", "why6");
+  await send(()=>C.floor(signer).open(id, isLong, size, marg), "Open position", "why6");
+};
+
+/* ─── positions ─────────────────────────────────────────────────────── */
+async function paintPositions(p){
+  if (!me){ $("posList").innerHTML = '<div class="row"><span class="k">—</span><span class="v">connect a wallet</span></div>'; return; }
+  const f = C.floor(p);
+  let ids = [];
+  try { ids = await f.positionsOf(me); } catch(e){ return; }
+
+  const cards = [];
+  for (const idB of ids){
+    let v;
+    try { v = await f.positionView(idB); } catch(e){ continue; }
+    const pos = v[0];
+    if (pos.owner === E.ZeroAddress) continue;      // closed
+    const sym = (MKT.find(m=>m.id===Number(pos.marketId))||{}).sym || pos.marketId;
+    const pnl = v[2], eq = v[4], liq = v[6], danger = v[7];
+    const px  = v[1];
+    const pnlPct = pos.margin>0n ? Number(pnl)*100/Number(pos.margin) : 0;
+    cards.push(`<div class="pos ${danger?'danger':''}">
+      ${danger?'<div class="warnbar">Below maintenance — this position can be liquidated by anyone right now.</div>':''}
+      <div class="top">
+        <span><span class="tag ${pos.isLong?'long':'short'}">${pos.isLong?'LONG':'SHORT'}</span> ${sym} #${idB}</span>
+        <span class="${Number(pnl)>=0?'v ok':'v bad'}">${Number(pnl)>=0?'+':''}${fmt(pnl<0n?-pnl:pnl,6)} CHIP ${Number(pnl)<0?'loss':'profit'} (${pnlPct.toFixed(1)}%)</span>
+      </div>
+      <div class="row"><span class="k">Size / margin</span><span class="v">${fmt(pos.size,6)} / ${fmt(pos.margin,6)}</span></div>
+      <div class="row"><span class="k">Entry / mark</span><span class="v">${fmt(pos.entryPrice,18)} → ${fmt(px,18)}</span></div>
+      <div class="row"><span class="k">Funding paid</span><span class="v">${Number(v[3])>=0?'':'-'}${fmt(v[3]<0n?-v[3]:v[3],6)}</span></div>
+      <div class="row"><span class="k">Equity / maintenance</span><span class="v">${fmt(eq<0n?0n:eq,6)} / ${fmt(v[5],6)}</span></div>
+      <div class="row"><span class="k">Liquidation price</span><span class="v ${danger?'bad':'warn'}">${fmt(liq,18)}</span></div>
+      <div class="act">
+        <button data-close="${idB}">Close</button>
+        <button data-add="${idB}" class="ghost">Add 50 margin</button>
+      </div>
+    </div>`);
+  }
+  $("posList").innerHTML = cards.length ? cards.join("")
+    : '<div class="row"><span class="k">—</span><span class="v">nothing open</span></div>';
+
+  $("posList").querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>{
+    if (needWallet("why7")) return;
+    send(()=>C.floor(signer).close(b.dataset.close), "Close position #"+b.dataset.close, "why7");
+  });
+  $("posList").querySelectorAll("[data-add]").forEach(b=>b.onclick=async ()=>{
+    if (needWallet("why7")) return;
+    const amt = E.parseUnits("50",6);
+    const c = C.chips(signer);
+    if ((await c.allowance(me,A.floorplan)) < amt)
+      await send(()=>c.approve(A.floorplan, amt), "Approve margin", "why7");
+    await send(()=>C.floor(signer).addMargin(b.dataset.add, amt), "Add margin", "why7");
+  });
+}
+
+/* ─── desk exposure ─────────────────────────────────────────────────── */
+async function paintDesk(p){
+  const f = C.floor(p);
+  const rows = [];
+  let owed = 0n;
+  try { owed = await f.poolPnl(); } catch(e){}
+  for (const m of MKT){
+    let v; try { v = await f.marketView(m.id); } catch(e){ continue; }
+    const L = v[0], S = v[1], skew = v[2], fh = v[3];
+    if (L===0n && S===0n){
+      rows.push(`<div class="row"><span class="k">${m.sym}</span><span class="v">no open interest</span></div>`);
+      continue;
+    }
+    const rate = Number(E.formatUnits(fh,18))*100;
+    rows.push(`<div class="row"><span class="k">${m.sym} long / short</span><span class="v">${fmt(L,6)} / ${fmt(S,6)}</span></div>`
+      + `<div class="row"><span class="k">${m.sym} funding</span><span class="v">${rate>=0?'longs pay':'pool pays longs'} ${Math.abs(rate).toFixed(4)}%/hr</span></div>`);
+  }
+  const sign = owed >= 0n;
+  rows.push(`<div class="row"><span class="k">Pool owes traders</span><span class="v ${sign&&owed>0n?'bad':'ok'}">${sign?'':'-'}${fmt(owed<0n?-owed:owed,6)} CHIP</span></div>`);
+  $("deskList").innerHTML = rows.join("");
+}
+
+/* ─── admin ─────────────────────────────────────────────────────────── */
+$("btnPusher").onclick = () => {
+  if (needWallet("why9")) return;
+  const a = ($("pusherAddr").value||"").trim();
+  if (!E.isAddress(a)){ say("why9","That is not a valid address.","err"); return; }
+  send(()=>C.engine(signer).setPusher(a, true), "Authorise pusher", "why9");
+};
+$("btnForce").onclick = () => {
+  if (needWallet("why9")) return;
+  const id = Number($("fpId").value||0);
+  const px = ($("fpPx").value||"").trim();
+  if (!id || !px){ say("why9","Market id and price are both required.","err"); return; }
+  send(()=>C.engine(signer).forcePush(id, E.parseUnits(px,18)), "Force push market "+id, "why9");
+};
+
+/* ─── boot ──────────────────────────────────────────────────────────── */
+$("aChips").textContent   = short(A.chips);
+$("aBallast").textContent = short(A.ballast);
+$("aEngine").textContent  = short(A.engine);
+$("aFloor").textContent   = short(A.floorplan);
+quote();
+refresh();
+setInterval(refresh, 15000);
+if (window.ethereum){
+  window.ethereum.on?.("accountsChanged", ()=>location.reload());
+  window.ethereum.on?.("chainChanged",   ()=>location.reload());
+}
+</script>
+</body>
+</html>

@@ -84,6 +84,14 @@ button:hover:not(:disabled){filter:brightness(1.12)}
 button:focus-visible{outline:2px solid var(--paper);outline-offset:2px}
 button:disabled{background:var(--edge);color:var(--mute);cursor:not-allowed}
 button.ghost{background:transparent;color:var(--sky);border:1px solid var(--edge)}
+button.tab{background:transparent;color:var(--mute);border:1px solid var(--edge);padding:7px 13px}
+button.tab.on{background:var(--sky);color:var(--ink);border-color:var(--sky)}
+.chart svg{width:100%;height:auto;display:block}
+.chart .gl{stroke:var(--edge);stroke-width:1}
+.chart .ln{fill:none;stroke:var(--sky);stroke-width:1.6;stroke-linejoin:round}
+.chart .ar{fill:var(--sky);opacity:.10}
+.chart text{font:11px "IBM Plex Mono",monospace;fill:var(--mute)}
+.chart .last{fill:var(--sky)}
 input{
   font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--paper);
   border:1px solid var(--edge);border-radius:2px;padding:9px 11px;width:190px;
@@ -217,6 +225,18 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
   </div>
 </section>
 
+
+
+<!-- chart -->
+<section>
+  <div class="head"><h2>Price history</h2><span class="addr" id="chartMeta"></span></div>
+  <div class="how">Drawn from the engine's own PricePushed events, not an exchange feed — this is the price your positions actually settle against. Gaps mean the feeder skipped a push, and a flat run means it was rejected or down. Both are worth noticing.</div>
+  <div class="body">
+    <div class="act" id="chartTabs"></div>
+    <div id="chartBox" style="margin-top:12px"></div>
+    <div class="why" id="whyC"></div>
+  </div>
+</section>
 
 <!-- 06 ── ticket -->
 <section>
@@ -416,10 +436,13 @@ async function refresh(){
       const age = Number(updatedAt)===0 ? "never pushed"
                 : `${now-Number(updatedAt)}s ago`;
       lastPx[m.id] = value; lastStatus[m.id] = Number(s);
+      pushLive(m.id, Number(E.formatUnits(value,18)), Number(updatedAt));
       rows.push({ sym:m.sym, s:Number(s), age,
         px: Number(value)===0 ? "—" : "$"+fmt(value,18,2) });
     }
     paintTape(rows);
+    await loadHistory(p);
+    drawChart();
     $("mCount").textContent = (await en.marketCount()).toString();
     $("mRej").textContent = rej.toString();
     $("mRej").className = "v" + (rej>0n ? " warn" : "");
@@ -592,6 +615,115 @@ $("btnPush").onclick = () => {
   send(()=>C.engine(signer).pushPrices(ids, vals), "Push "+ids.length+" price(s)", "why5");
 };
 
+
+
+/* ─── price history ─────────────────────────────────────────────────── */
+let chartMkt = 1;
+const series = {1:[],2:[],3:[]};          // {t, p}
+let logsTried = false;
+
+$("chartTabs").innerHTML = MKT.map(m=>
+  `<button class="tab${m.id===1?' on':''}" data-mkt="${m.id}">${m.sym}</button>`).join("");
+$("chartTabs").querySelectorAll("[data-mkt]").forEach(b=>b.onclick=()=>{
+  chartMkt = Number(b.dataset.mkt);
+  $("chartTabs").querySelectorAll(".tab").forEach(x=>x.className="tab"+(Number(x.dataset.mkt)===chartMkt?" on":""));
+  drawChart();
+});
+
+/**
+ * Pull PricePushed history. Public RPCs cap getLogs ranges, so this walks
+ * backwards in chunks and stops at the first refusal rather than failing
+ * the whole read — a short chart beats no chart.
+ */
+async function loadHistory(p){
+  if (logsTried) return;
+  logsTried = true;
+  try{
+    const latest = await p.getBlockNumber();
+    const topic  = E.id("PricePushed(uint256,uint256,uint64,uint64)");
+    const iface  = new E.Interface(["event PricePushed(uint256 indexed id,uint256 value,uint64 roundId,uint64 at)"]);
+    let from = latest, span = 5000, got = 0;
+
+    for (let i=0; i<8 && from > 0; i++){
+      const lo = Math.max(0, from - span);
+      let logs;
+      try{
+        logs = await p.getLogs({ address:A.engine, topics:[topic], fromBlock:lo, toBlock:from });
+      }catch(e){ break; }                   // range refused — keep what we have
+      for (const l of logs){
+        try{
+          const d = iface.parseLog(l);
+          const id = Number(d.args.id);
+          if (series[id]) series[id].push({ t:Number(d.args.at), p:Number(E.formatUnits(d.args.value,18)) });
+          got++;
+        }catch{}
+      }
+      from = lo - 1;
+      if (got > 1200) break;
+    }
+    for (const k in series) series[k].sort((a,b)=>a.t-b.t);
+    say("whyC", got ? "" : "No history yet — the chart fills in as the feeder pushes.", got?"":"");
+  }catch(e){
+    say("whyC","Could not read history from this RPC. The chart will build up live instead.","");
+  }
+}
+
+/** Append the live tape reading so the chart keeps moving between log pulls. */
+function pushLive(id, price, at){
+  const s = series[id]; if (!s) return;
+  if (!price || !at) return;
+  if (s.length && s[s.length-1].t >= at) return;
+  s.push({ t:at, p:price });
+  if (s.length > 2000) s.shift();
+}
+
+function drawChart(){
+  const s = series[chartMkt] || [];
+  const sym = (MKT.find(m=>m.id===chartMkt)||{}).sym || "";
+  const box = $("chartBox");
+
+  if (s.length < 2){
+    box.innerHTML = `<div class="row"><span class="k">${sym}</span><span class="v">not enough points yet — needs two pushes</span></div>`;
+    $("chartMeta").textContent = "";
+    return;
+  }
+
+  const W=700, H=220, PL=8, PR=62, PT=12, PB=22;
+  const xs = s.map(d=>d.t), ys = s.map(d=>d.p);
+  const t0=Math.min(...xs), t1=Math.max(...xs);
+  let lo=Math.min(...ys), hi=Math.max(...ys);
+  if (hi===lo){ hi=lo*1.0005; lo=lo*0.9995; }
+  const pad=(hi-lo)*0.12; lo-=pad; hi+=pad;
+
+  const X = t => PL + (t-t0)/((t1-t0)||1) * (W-PL-PR);
+  const Y = v => PT + (hi-v)/((hi-lo)||1) * (H-PT-PB);
+
+  const pts = s.map(d=>`${X(d.t).toFixed(1)},${Y(d.p).toFixed(1)}`).join(" ");
+  const area = `${PL},${H-PB} ${pts} ${X(t1).toFixed(1)},${H-PB}`;
+
+  let grid="";
+  for (let i=0;i<=3;i++){
+    const v = lo + (hi-lo)*i/3, y = Y(v);
+    grid += `<line class="gl" x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"/>`
+         +  `<text x="${W-PR+6}" y="${(y+4).toFixed(1)}">${v.toLocaleString(undefined,{maximumFractionDigits:2})}</text>`;
+  }
+
+  const last = s[s.length-1];
+  const mins = Math.round((t1-t0)/60);
+
+  box.innerHTML = `<div class="chart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+      aria-label="${sym} price, last ${mins} minutes">
+    ${grid}
+    <polygon class="ar" points="${area}"/>
+    <polyline class="ln" points="${pts}"/>
+    <circle cx="${X(last.t).toFixed(1)}" cy="${Y(last.p).toFixed(1)}" r="3" class="last"/>
+    <text x="${PL}" y="${H-6}">${new Date(t0*1000).toLocaleTimeString()}</text>
+    <text x="${(W-PR-70).toFixed(0)}" y="${H-6}">${new Date(t1*1000).toLocaleTimeString()}</text>
+  </svg></div>`;
+
+  const first = s[0].p, chg = (last.p/first - 1)*100;
+  $("chartMeta").textContent = `${s.length} points · ${mins}m · ${chg>=0?"+":""}${chg.toFixed(2)}%`;
+}
 
 /* ─── ticket ────────────────────────────────────────────────────────── */
 $("tkMkt").innerHTML = MKT.map(m=>`<option value="${m.id}">${m.sym}</option>`).join("");

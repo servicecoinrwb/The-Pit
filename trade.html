@@ -63,7 +63,8 @@ button,select,input{font-family:inherit}
 .ohlc{font-size:11.5px;color:var(--mute);font-variant-numeric:tabular-nums}
 .ohlc b{color:var(--paper);font-weight:500}
 #chart{padding:6px 8px 0}
-#chart svg{width:100%;height:auto;display:block;touch-action:none}
+#chart{height:min(56vh,430px)}
+#chart svg{width:100%;height:100%;display:block;touch-action:none}
 .gl{stroke:var(--edge);stroke-width:.7;opacity:.55}
 .ax{font:10px "IBM Plex Mono",monospace;fill:var(--mute)}
 .up{fill:var(--jade);stroke:var(--jade)}
@@ -226,7 +227,7 @@ const BAL=["function stats() view returns (uint256,uint256,uint256,uint256,uint2
 let provider, signer, me, read;
 let cur=1, side="long", tf=300, hoverIdx=null;
 const series={1:[],2:[],3:[]}, px={}, stat={}, mstate={};
-let loaded=false, pool=null;
+let loaded=false, pool=null, poolOwed=null;
 
 function log(m,h){const d=document.createElement("div");
   d.innerHTML=`${new Date().toLocaleTimeString()} — ${m}`+(h?` <a href="${SCAN}/tx/${h}" target="_blank" rel="noopener">view</a>`:"");
@@ -269,7 +270,12 @@ function drawChart(){
       or wait for the feeder to publish a few more.</div>`;
     $("ohlc").textContent=""; return;
   }
-  const W=900,H=340,PR=64,PB=24,PT=10,PL=6;
+  // Match the viewBox to the element's real pixel size. With a fixed
+  // viewBox and preserveAspectRatio="none" a wide monitor stretches every
+  // candle and every label horizontally; this keeps them honest.
+  const W=Math.max(360,Math.round(box.clientWidth||900));
+  const H=Math.max(220,Math.round(box.clientHeight||340));
+  const PR=64,PB=24,PT=10,PL=6;
   let lo=Math.min(...cs.map(c=>c.l)), hi=Math.max(...cs.map(c=>c.h));
   if(hi===lo){hi=lo*1.001;lo=lo*0.999;}
   const pad=(hi-lo)*0.10; lo-=pad; hi+=pad;
@@ -394,8 +400,8 @@ function paintStats(){
       m.L!==undefined?n2(m.L,6,0)+" / "+n2(m.S,6,0):"—"}</span></div>
     <div class="stat"><span class="k">Pool free</span><span class="v">${
       pool?n2(pool[2],6,0)+" CHIP":"—"}</span></div>
-    <div class="stat"><span class="k">Pool owes</span><span class="v ${pool&&pool.owed>0n?"bad":"ok"}">${
-      pool?(pool.owed<0n?"-":"")+n2(pool.owed<0n?-pool.owed:pool.owed,6):"—"}</span></div>`;
+    <div class="stat"><span class="k">Pool owes</span><span class="v ${poolOwed>0n?"bad":"ok"}">${
+      poolOwed===null?"—":(poolOwed<0n?"-":"")+n2(poolOwed<0n?-poolOwed:poolOwed,6)}</span></div>`;
 }
 
 /* ── ticket ───────────────────────────────────────────────────────── */
@@ -527,12 +533,20 @@ async function refresh(){
       const v=await C.floor(p).marketView(m.id);
       mstate[m.id]={L:v[0],S:v[1],funding:v[3],reserved:v[5]};
     }
-    const st=await C.bal(p).stats();
-    pool=st; pool.owed=await C.floor(p).poolPnl();
+    // ethers' Result is frozen — attaching a property to it silently fails
+    // and the undefined read downstream throws, which took the whole stats
+    // strip and the ticket quote down with it.
+    pool=await C.bal(p).stats();
+    poolOwed=await C.floor(p).poolPnl();
   }catch(e){}
 
-  paintStats(); quote();
-  await paintPos(p); await paintDesk(p);
+  // Each painter is isolated. A failure in one should degrade that panel,
+  // not blank the page — which is exactly what happened when the pool read
+  // threw and took the stats strip and the ticket quote with it.
+  try{ paintStats(); }catch(e){ log("Stats failed: "+e.message); }
+  try{ quote(); }catch(e){ log("Quote failed: "+e.message); }
+  try{ await paintPos(p); }catch(e){ log("Positions failed: "+e.message); }
+  try{ await paintDesk(p); }catch(e){ log("Desk failed: "+e.message); }
 }
 
 /* ── wallet ───────────────────────────────────────────────────────── */
@@ -576,6 +590,7 @@ $("btnGo").onclick=async()=>{
 
 /* ── boot ─────────────────────────────────────────────────────────── */
 paintMkts(); refresh(); setInterval(refresh,15000);
+let rz; addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(drawChart,150); });
 if(window.ethereum){
   window.ethereum.on?.("accountsChanged",()=>location.reload());
   window.ethereum.on?.("chainChanged",()=>location.reload());

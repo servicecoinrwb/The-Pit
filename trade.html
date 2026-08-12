@@ -271,6 +271,7 @@ tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
   <div class="brand"><a href="index.html">The <span>Pit</span></a></div>
   <div class="topright">
     <span class="rpcwarn" id="rpcWarn"></span>
+    <button class="pill" id="btnProbe" title="Report what the node returns for deposit logs">Probe</button>
     <button class="pill" id="btnTheme" title="Light or dark">☾</button>
     <button class="pill" id="btnRpc" title="Switch price data endpoint">RPC <span id="rpcN"></span></button>
     <button class="pill view on" data-view="trade">Trade</button>
@@ -1798,6 +1799,37 @@ async function scanSmart(p,address,topics,latest){
   return scan(p,address,topics,latest,1200000,400);
 }
 
+/* Report what the node actually returns rather than inferring it.
+   Three theories about why the deposit history came back empty were wrong;
+   this asks directly. */
+async function probeLogs(){
+  const p=provider||rp();
+  const latest=await p.getBlockNumber();
+  const pad=me?E.zeroPadValue(me,32):null;
+  const t0=E.id("Deposit(address,address,uint256,uint256)");
+  log("probe: block "+latest+", wallet "+(me?short(me):"none"));
+
+  const cases=[
+    ["filtered by owner, last 15k",  [t0,null,pad], 15000],
+    ["filtered by owner, last 200k", [t0,null,pad], 200000],
+    ["filtered by sender, last 15k", [t0,pad], 15000],
+    ["any Deposit at all, last 15k", [t0], 15000],
+    ["every event on the pool, 5k",  null, 5000],
+  ];
+  for(const [label,topics,back] of cases){
+    if(topics && topics.includes(null) && !pad){ log("probe: "+label+" — no wallet"); continue; }
+    try{
+      const logs=await p.getLogs({address:A.ballast,
+        ...(topics?{topics}:{}), fromBlock:latest-back, toBlock:latest});
+      log(`probe: ${label} → ${logs.length} log(s)`);
+      if(logs.length && !topics) log("  topic0 seen: "+logs[0].topics[0].slice(0,18)+"…");
+      if(logs.length && topics && topics.length===1)
+        log("  owner topic: "+(logs[0].topics[2]||"none")+" · yours: "+pad);
+    }catch(e){ log(`probe: ${label} → refused (${e.shortMessage||e.message})`); }
+  }
+}
+window.probeLogs = probeLogs;
+
 /* ── portfolio painters ───────────────────────────────────────────── */
 function paintFStats(){
   const net=trades.reduce((a,t)=>a+Number(E.formatUnits(t.net,6)),0);
@@ -2290,6 +2322,14 @@ $("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; drawChart(); };
     apply(cur);
   };
 })();
+
+$("btnProbe").onclick = ()=>{
+  document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("on",x.dataset.view==="trade"));
+  document.querySelectorAll("[data-panel]").forEach(x=>x.classList.toggle("on",x.dataset.panel==="trade"));
+  document.querySelectorAll(".tb").forEach(x=>x.classList.toggle("on",x.dataset.tab==="log"));
+  $("tabPos").hidden=true; $("tabDesk").hidden=true; $("tabLog").hidden=false;
+  probeLogs();
+};
 
 $("btnRpc").onclick = nextRpc;
 $("rpcN").textContent = String(rpcIdx+1);

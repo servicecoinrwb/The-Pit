@@ -34,15 +34,16 @@ button,select,input{font-family:inherit}
 .dot.on{background:var(--jade)}
 
 /* ── market tabs + stat strip ────────────────────── */
-.mkts{display:flex;gap:0;border-bottom:1px solid var(--edge);overflow-x:auto}
+.mkts{display:flex;gap:0;border-bottom:1px solid var(--edge);
+      overflow-x:auto;scrollbar-width:thin}
 .mkt{background:transparent;border:0;border-right:1px solid var(--edge);
-     border-bottom:2px solid transparent;padding:11px 18px;cursor:pointer;text-align:left;
-     color:var(--mute);white-space:nowrap;min-width:132px}
+     border-bottom:2px solid transparent;padding:9px 13px;cursor:pointer;text-align:left;
+     color:var(--mute);white-space:nowrap;min-width:104px;flex:none}
 .mkt:hover{background:var(--slab)}
 .mkt.on{border-bottom-color:var(--sky);background:var(--slab);color:var(--paper)}
 .mkt .s{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
         letter-spacing:.1em;text-transform:uppercase;display:block}
-.mkt .p{font-size:15px;font-variant-numeric:tabular-nums;display:block;margin-top:2px}
+.mkt .p{font-size:14px;font-variant-numeric:tabular-nums;display:block;margin-top:2px}
 .mkt .st{font-size:10px;letter-spacing:.05em;text-transform:uppercase;display:block;margin-top:1px}
 .ok{color:var(--jade)} .warn{color:var(--amber)} .bad{color:var(--rust)}
 
@@ -58,7 +59,10 @@ button,select,input{font-family:inherit}
 .stat .v{font-size:14px;font-variant-numeric:tabular-nums;display:block;margin-top:1px}
 
 /* ── main grid ───────────────────────────────────── */
-.main{display:grid;grid-template-columns:1fr 316px;gap:0}
+/* minmax(0,1fr) rather than 1fr: a grid track defaults to min-content
+   width, so a wide chart or a long row of market tabs pushes the whole
+   layout out and clips whatever sits to its right. */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 316px;gap:0}
 .chartcol{border-right:1px solid var(--edge);min-width:0}
 .tfbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
        padding:8px 14px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
@@ -152,8 +156,11 @@ tr.danger td{background:rgba(181,81,47,.11)}
 #log div{padding:2px 0;border-bottom:1px dotted var(--edge);word-break:break-all}
 #log a{color:var(--sky)}
 
+@media (max-width:1180px){
+  .main{grid-template-columns:minmax(0,1fr) 280px}
+}
 @media (max-width:900px){
-  .main{grid-template-columns:1fr}
+  .main{grid-template-columns:minmax(0,1fr)}
   .chartcol{border-right:0;border-bottom:1px solid var(--edge)}
 }
 </style>

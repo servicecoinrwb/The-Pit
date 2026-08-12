@@ -72,6 +72,9 @@ button,select,input{font-family:inherit}
 .tf.on{background:var(--sky);color:var(--ink);border-color:var(--sky)}
 .ohlc{font-size:11.5px;color:var(--mute);font-variant-numeric:tabular-nums}
 .ohlc b{color:var(--paper);font-weight:500}
+.zoomctl{display:flex;align-items:center;gap:4px}
+.zoomctl .tf{padding:3px 9px;min-width:28px}
+.zn{font-size:10.5px;color:var(--mute);margin-left:2px;white-space:nowrap}
 #chart{padding:6px 8px 0}
 .tools{display:flex;align-items:center;gap:5px;padding:7px 14px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
 .tools .tl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin-right:3px}
@@ -92,7 +95,14 @@ button,select,input{font-family:inherit}
          letter-spacing:.07em;text-transform:uppercase;cursor:pointer;z-index:2}
 #chart{position:relative}
 #thin{padding:6px 12px;font-size:11.5px;color:var(--mute);line-height:1.5}
-#chart{height:min(56vh,430px)}
+/* Height is a variable so the grip can change it live, and it is remembered
+   between sessions — a chart you resized once should stay that size. */
+#chart{height:var(--charth,430px)}
+.grip{height:9px;cursor:row-resize;background:var(--slab);border-top:1px solid var(--edge);
+      border-bottom:1px solid var(--edge);display:flex;align-items:center;justify-content:center}
+.grip:hover span,.grip.dragging span{background:var(--sky)}
+.grip span{display:block;width:44px;height:2px;background:var(--edge);border-radius:1px}
+body.resizing{cursor:row-resize;user-select:none}
 #chart svg{width:100%;height:100%;display:block;touch-action:none}
 .gl{stroke:var(--edge);stroke-width:.7;opacity:.55}
 .ax{font:10px "IBM Plex Mono",monospace;fill:var(--mute)}
@@ -212,7 +222,15 @@ tr.danger td{background:rgba(181,81,47,.11)}
   <div class="chartcol">
     <div class="tfbar">
       <div class="tfs" id="tfs"></div>
-      <div class="ohlc" id="ohlc"></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="ohlc" id="ohlc"></div>
+        <div class="zoomctl">
+          <button class="tf" id="zOut" title="Show more candles">−</button>
+          <button class="tf" id="zIn"  title="Show fewer candles">+</button>
+          <button class="tf" id="zFit" title="Fit everything there is">Fit</button>
+          <span class="zn" id="zN"></span>
+        </div>
+      </div>
     </div>
     <div class="tools">
       <span class="tl">Indicators</span>
@@ -257,6 +275,8 @@ tr.danger td{background:rgba(181,81,47,.11)}
     <div class="note" id="note"></div>
   </div>
 </div>
+
+<div class="grip" id="grip" title="Drag to resize the chart"><span></span></div>
 
 <div class="below">
   <div class="tabs">
@@ -535,9 +555,15 @@ function drawChart(){
     grid+=`<line class="gl" x1="${X0.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${y.toFixed(1)}"/>`+
           `<text class="ax" x="${W-PR+6}" y="${(y+3.5).toFixed(1)}">${money(v)}</text>`;
   }
-  const step=Math.max(1,Math.floor(cs.length/5));
-  for(let i=0;i<cs.length;i+=step){
-    grid+=`<text class="ax" x="${X(i).toFixed(1)}" y="${H-7}" text-anchor="middle">`+
+  // Space labels by pixels rather than by candle count. Dividing the count
+  // by five puts them 8px apart when only eight candles exist, which is how
+  // "11:45 AM 11:50 11:55" ended up printed on top of itself.
+  const LABEL_PX = 78;
+  const step = Math.max(1, Math.ceil(LABEL_PX / cw));
+  for(let i=cs.length-1; i>=0; i-=step){
+    const x = X(i);
+    if (x < X0 + 26) break;                    // would clip the left edge
+    grid+=`<text class="ax" x="${x.toFixed(1)}" y="${H-7}" text-anchor="middle">`+
           `${new Date(cs[i].t*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</text>`;
   }
   cs.forEach((c,i)=>{
@@ -690,6 +716,12 @@ function drawChart(){
     }
     drawChart();
   };
+
+  const zn=$("zN");
+  if(zn){
+    const covered = cs.length>1 ? dur(cs[cs.length-1].t - cs[0].t) : "";
+    zn.textContent = `${cs.length} of ${all.length}${covered?" · "+covered:""}`;
+  }
 
   showOHLC(cs[hoverIdx!==null?hoverIdx:cs.length-1]);
 }
@@ -1213,6 +1245,53 @@ document.querySelectorAll("[data-ind]").forEach(b=>b.onclick=()=>{
 });
 document.querySelectorAll("[data-draw]").forEach(b=>b.onclick=()=>setMode(b.dataset.draw));
 $("clrAll").onclick=()=>{ draws[cur]=[]; saveDraws(); setMode(null); drawChart(); };
+
+/* ── chart height, dragged and remembered ─────────────────────────── */
+const H_KEY="pit.charth", H_MIN=200, H_MAX=900;
+function setChartH(px, persist){
+  const h = Math.max(H_MIN, Math.min(H_MAX, Math.round(px)));
+  document.documentElement.style.setProperty("--charth", h+"px");
+  if(persist){ try{ localStorage.setItem(H_KEY, String(h)); }catch(e){} }
+  drawChart();
+}
+setChartH(Number(localStorage.getItem(H_KEY)) || Math.min(430, Math.round(innerHeight*0.5)), false);
+
+(function(){
+  const grip=$("grip"); let start=null;
+  const begin=ev=>{
+    start={y:ev.clientY, h:$("chart").clientHeight};
+    grip.classList.add("dragging"); document.body.classList.add("resizing");
+    grip.setPointerCapture?.(ev.pointerId);
+    ev.preventDefault();
+  };
+  const move=ev=>{ if(start) setChartH(start.h + (ev.clientY-start.y), false); };
+  const end=ev=>{
+    if(!start) return;
+    setChartH($("chart").clientHeight, true);      // only persist on release
+    start=null;
+    grip.classList.remove("dragging"); document.body.classList.remove("resizing");
+    grip.releasePointerCapture?.(ev.pointerId);
+  };
+  grip.addEventListener("pointerdown", begin);
+  addEventListener("pointermove", move);
+  addEventListener("pointerup", end);
+  // Double-click restores the default rather than leaving someone stuck with
+  // a two-pixel chart they cannot grab hold of again.
+  grip.addEventListener("dblclick", ()=>setChartH(430, true));
+})();
+
+/* ── zoom ─────────────────────────────────────────────────────────── */
+function setSpan(next, anchorRight){
+  const before=span;
+  span=Math.max(SPAN_MIN, Math.min(SPAN_MAX, Math.round(next)));
+  // Anchor on the right edge so zooming keeps the latest candle in view,
+  // which is where attention is.
+  if(!anchorRight) offset=Math.max(0, offset + (before-span));
+  drawChart();
+}
+$("zIn").onclick  = ()=>setSpan(span/1.4, true);
+$("zOut").onclick = ()=>setSpan(span*1.4, true);
+$("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; drawChart(); };
 
 $("btnRpc").onclick = nextRpc;
 $("rpcN").textContent = String(rpcIdx+1);

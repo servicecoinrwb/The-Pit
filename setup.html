@@ -303,7 +303,7 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
       <button id="btnPusher">Authorise pusher</button>
     </div>
     <div class="act">
-      <input id="fpId" placeholder="market id" inputmode="numeric" style="width:110px">
+      <input id="fpId" placeholder="market id (a number)" inputmode="numeric" style="width:160px">
       <input id="fpPx" placeholder="price" inputmode="decimal" style="width:150px">
       <button id="btnForce" class="ghost">Force push</button>
     </div>
@@ -320,6 +320,47 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
         <button id="btnFundFix">Set funding factor to 10000 on all markets</button>
       </div>
       <div class="why" id="why10"></div>
+    </div>
+
+    <div style="border-top:1px solid var(--edge);margin-top:16px;padding-top:14px">
+      <div class="row"><span class="k">Pool's current engine</span><span class="v" id="curPerp">—</span></div>
+      <div class="row"><span class="k">Proposed engine</span><span class="v" id="propPerp">—</span></div>
+      <div class="row"><span class="k">Executable</span><span class="v" id="perpEta">—</span></div>
+      <div class="hint" style="margin:8px 0">Swapping the engine is the most dangerous action here — the engine
+        can move money out of the pool. The delay is not there to make the owner trustworthy; it is there so
+        depositors who disagree have time to withdraw first. It also refuses while capital is reserved against
+        open positions, because the incoming engine knows nothing about them and could never release them.</div>
+      <div class="act">
+        <input id="newPerp" placeholder="new Floorplan address">
+        <button id="btnPropose" class="ghost">Propose</button>
+        <button id="btnExecPerp">Execute</button>
+        <button id="btnCancelPerp" class="ghost">Cancel</button>
+      </div>
+      <div class="why" id="why12"></div>
+    </div>
+
+    <div style="border-top:1px solid var(--edge);margin-top:16px;padding-top:14px">
+      <div class="hint" style="margin-bottom:8px">A freshly deployed desk points at nothing until this is set,
+        and it can only be set once — there is no correcting a wrong address afterwards.</div>
+      <div class="act">
+        <input id="fpAddr" placeholder="Floorplan address">
+        <input id="fpBallast" placeholder="Ballast address">
+        <button id="btnSetBallast" class="ghost">Point desk at pool</button>
+      </div>
+      <div class="why" id="why13"></div>
+    </div>
+
+    <div style="border-top:1px solid var(--edge);margin-top:16px;padding-top:14px">
+      <div class="row"><span class="k">Markets on the engine</span><span class="v" id="mkList">—</span></div>
+      <div class="hint" style="margin:8px 0">Listing is on PriceEngine and is independent of the desk — an unlisted
+        market simply does not exist, and a listed one with no feeder goes stale and halts itself. Index futures
+        and crude get session windows; crypto and tokenised gold trade around the clock and get none. Each is
+        skipped if it already exists, so running this twice is harmless.</div>
+      <div class="act">
+        <button id="btnListAll">List the six pending markets</button>
+      </div>
+      <div class="why" id="why11"></div>
+      <div id="listLog" class="hint" style="margin-top:9px;line-height:1.8"></div>
     </div>
   </div>
 </section>
@@ -365,6 +406,13 @@ const BALLAST = [
   "function stats() view returns (uint256 assets,uint256 raw,uint256 idle,uint256 reserved,uint256 supply,uint256 assetsPerShare,bool healthy,bool ready)",
   "function initialised() view returns (bool)",
   "function initialise(uint256)",
+  "function perp() view returns (address)",
+  "function proposedPerp() view returns (address)",
+  "function perpEta() view returns (uint256)",
+  "function proposePerp(address)",
+  "function cancelPerpProposal()",
+  "function executePerp()",
+  "function PERP_TIMELOCK() view returns (uint256)",
   "function deposit(uint256,address) returns (uint256)",
   "function withdraw(uint256,address,address) returns (uint256)",
   "function redeem(uint256,address,address) returns (uint256)",
@@ -386,6 +434,8 @@ const FLOOR = [
   "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)",
   "function marketView(uint256) view returns (uint256 longSize,uint256 shortSize,int256 skew,int256 fundingHourly,int256 cumFunding,uint256 reserved,uint256 price,uint8 status)",
   "function poolPnl() view returns (int256)",
+  "function setBallast(address)",
+  "function ballast() view returns (address)",
   "function maxProfitBps() view returns (uint256)",
   "function minSize() view returns (uint256)",
   "function openFeeBps() view returns (uint256)",
@@ -401,6 +451,9 @@ const ENGINE = [
   "function setPusher(address,bool)",
   "function forcePush(uint256,uint128)",
   "function configureMarket(uint256,uint16,uint16,uint32,uint32,uint32,uint128)",
+  "function listMarket(uint256,string,bool,uint16,uint16,uint32,uint32,uint32,uint128)",
+  "function setSessions(uint256,tuple(uint32 start,uint32 end)[])",
+  "function marketCount() view returns (uint256)",
   "function markets(uint256) view returns (bool listed,bool paused,bool hasSessions,uint16 maxLeverageX,uint16 maxDeviationBps,uint32 maxStaleness,uint32 fundingFactor,uint32 maxFundingBps,uint128 maxOpenInterest,string symbol)",
 ];
 
@@ -480,6 +533,39 @@ async function refresh(){
     await loadHistory(p);
     drawChart();
     $("mCount").textContent = (await en.marketCount()).toString();
+    try{
+      const b = C.ballast(p);
+      const cur = await b.perp();
+      const prop = await b.proposedPerp();
+      const eta = Number(await b.perpEta());
+      $("curPerp").textContent = cur === E.ZeroAddress ? "not set" : short(cur);
+      if (prop === E.ZeroAddress){
+        $("propPerp").textContent = "none";
+        $("perpEta").textContent = "—";
+      } else {
+        $("propPerp").textContent = short(prop);
+        const now = Math.floor(Date.now()/1000);
+        if (now >= eta){
+          $("perpEta").textContent = "ready now";
+          $("perpEta").className = "v ok";
+        } else {
+          const h = Math.floor((eta-now)/3600), m = Math.floor(((eta-now)%3600)/60);
+          $("perpEta").textContent = `in ${h}h ${m}m`;
+          $("perpEta").className = "v warn";
+        }
+      }
+    }catch(e){}
+
+    try{
+      const names=[];
+      for (let id=1; id<=9; id++){
+        try{
+          const c = await en.markets(id);
+          if (c.listed) names.push(c.symbol);
+        }catch(e){}
+      }
+      $("mkList").textContent = names.length ? names.join(" · ") : "none";
+    }catch(e){}
     try{
       const cfg = await en.markets(1);
       const f = Number(cfg.fundingFactor);
@@ -1005,6 +1091,93 @@ $("btnFundFix").onclick = async () => {
   say("why10",
     done ? `Updated ${done} market${done===1?"":"s"}${skipped?`, ${skipped} already set`:""}.`
          : "All markets already at 10000.", "ok");
+  refresh();
+};
+
+/* The six markets waiting on v2. Leverage is lower and the deviation band
+   wider on the thinner instruments, because they move further in the thirty
+   seconds between pushes than ETH does. WTI gets 8% rather than 5% — crude
+   genuinely travels that far on an inventory print, and a breaker that trips
+   on a real move is one that halts the market for no reason. */
+const PENDING = [
+  { id:4, sym:"SPX",  sessions:true,  lev:20, dev:500,  oi:"500000000000"  },
+  { id:5, sym:"NAS",  sessions:true,  lev:20, dev:500,  oi:"500000000000"  },
+  { id:6, sym:"WTI",  sessions:true,  lev:20, dev:800,  oi:"500000000000"  },
+  { id:7, sym:"GOLD", sessions:false, lev:30, dev:800,  oi:"1000000000000" },
+  { id:8, sym:"SOL",  sessions:false, lev:40, dev:1200, oi:"1000000000000" },
+  { id:9, sym:"XRP",  sessions:false, lev:40, dev:1200, oi:"1000000000000" },
+];
+/* Sun 18:00 → Fri 17:00 ET with the daily 17:00–18:00 halt, as seconds of
+   week from Sunday 00:00 UTC. ES, NQ and CL all run this identical schedule,
+   so all three reuse the array US30 already uses. These are wall-clock UTC
+   and shift by an hour when daylight saving ends. */
+const FUT_SESSIONS = [[79200,162000],[165600,248400],[252000,334800],[338400,421200],[424800,507600]];
+
+$("btnPropose").onclick = () => {
+  if (needWallet("why12")) return;
+  const a = ($("newPerp").value||"").trim();
+  if (!E.isAddress(a)){ say("why12","That is not a valid address.","err"); return; }
+  send(()=>C.ballast(signer).proposePerp(a), "Propose engine change", "why12");
+};
+$("btnExecPerp").onclick = () => {
+  if (needWallet("why12")) return;
+  send(()=>C.ballast(signer).executePerp(), "Execute engine change", "why12");
+};
+$("btnCancelPerp").onclick = () => {
+  if (needWallet("why12")) return;
+  send(()=>C.ballast(signer).cancelPerpProposal(), "Cancel proposal", "why12");
+};
+
+$("btnSetBallast").onclick = () => {
+  if (needWallet("why13")) return;
+  const f = ($("fpAddr").value||"").trim(), b = ($("fpBallast").value||"").trim();
+  if (!E.isAddress(f) || !E.isAddress(b)){ say("why13","Both fields need valid addresses.","err"); return; }
+  const fp = new E.Contract(f, FLOOR, signer);
+  send(()=>fp.setBallast(b), "Point desk at pool", "why13");
+};
+
+$("btnListAll").onclick = async () => {
+  if (needWallet("why11")) return;
+  const en = C.engine(signer);
+  const rd = C.engine(provider || readProvider());
+  const lines = [];
+  let listed = 0, skipped = 0;
+
+  for (const m of PENDING){
+    try{
+      const cfg = await rd.markets(m.id);
+      if (cfg.listed){
+        skipped++;
+        lines.push(`${m.sym} — already listed, skipped`);
+        $("listLog").innerHTML = lines.join("<br>");
+        continue;
+      }
+      await send(()=>en.listMarket(
+        m.id, m.sym, m.sessions, m.lev, m.dev, 300, 10000, 100, m.oi
+      ), `List ${m.sym}`, "why11");
+
+      if (m.sessions){
+        await send(()=>en.setSessions(m.id, FUT_SESSIONS), `Sessions for ${m.sym}`, "why11");
+        lines.push(`${m.sym} — listed with futures session windows`);
+      } else {
+        lines.push(`${m.sym} — listed, trades around the clock`);
+      }
+      listed++;
+      $("listLog").innerHTML = lines.join("<br>");
+    }catch(e){
+      // Stop rather than plough on: a failure here is usually gas running
+      // out, and the remaining calls would fail the same way. Everything
+      // already listed stays listed, and this is safe to run again.
+      lines.push(`${m.sym} — stopped: ${e.shortMessage||e.message}`);
+      $("listLog").innerHTML = lines.join("<br>");
+      say("why11", `Stopped at ${m.sym}. Whatever listed before this is fine — run it again once the cause is cleared.`, "err");
+      refresh();
+      return;
+    }
+  }
+  say("why11", listed
+    ? `Listed ${listed} market${listed===1?"":"s"}${skipped?`, ${skipped} already existed`:""}. They stay stale until the feeder publishes a first price for each.`
+    : "All six already listed.", "ok");
   refresh();
 };
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"> 
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Pit — portfolio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#0a1420;--slab:#101d2e;--panel:#16263f;--edge:#22364f;
-      --paper:#f5efe3;--mute:#8ba3bd;--sky:#6fb7e3;--jade:#5fa88a;--rust:#b5512f;--amber:#d9a441} 
+      --paper:#f5efe3;--mute:#8ba3bd;--sky:#6fb7e3;--jade:#5fa88a;--rust:#b5512f;--amber:#d9a441}
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--ink);color:var(--paper);font:14px/1.5 "IBM Plex Mono",ui-monospace,monospace}
@@ -59,6 +59,17 @@ td{padding:10px 12px;border-bottom:1px solid var(--edge);font-variant-numeric:ta
      letter-spacing:.07em;padding:2px 6px;border-radius:2px;color:var(--ink)}
 .tag.long{background:var(--jade)} .tag.short{background:var(--rust);color:var(--paper)}
 .tag.liq{background:var(--rust);color:var(--paper)}
+.lprow{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.lprow input{background:var(--ink);color:var(--paper);border:1px solid var(--edge);
+             border-radius:2px;padding:9px 11px;font:13px "IBM Plex Mono",monospace;width:190px}
+.lprow input:focus{outline:none;border-color:var(--sky)}
+.lpbtn{background:var(--sky);color:var(--ink);border:0;border-radius:2px;padding:9px 14px;cursor:pointer;
+       font:600 12px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.lpbtn.ghost{background:transparent;color:var(--sky);border:1px solid var(--edge)}
+.lpnote{font-size:11.5px;color:var(--mute);line-height:1.65;margin-top:11px;max-width:76ch}
+.lpnote b{color:var(--amber);font-weight:400}
+.why{font-size:11.5px;margin-top:9px;color:var(--amber)}
+.why.err{color:var(--rust)} .why.ok{color:var(--jade)}
 .none{padding:36px 16px;text-align:center;color:var(--mute);font-size:12.5px;line-height:1.8}
 .foot{padding:14px 16px 50px;color:var(--mute);font-size:11.5px;line-height:1.7}
 </style>
@@ -70,7 +81,7 @@ td{padding:10px 12px;border-bottom:1px solid var(--edge);font-variant-numeric:ta
   <div class="topright">
     <a class="pill" href="trade.html">Trade</a>
     <a class="pill on" href="portfolio.html">Portfolio</a>
-    <a class="pill" href="setup.html">Setup</a>
+    <a class="pill" href="setup.html">Setup &amp; admin</a>
     <button class="pill" id="btnConnect"><span class="dot" id="dot"></span><span id="who">Connect</span></button>
   </div>
 </div>
@@ -86,7 +97,7 @@ says whether trading here made or lost money.</div>
 <div class="tabs">
   <button class="tb on" data-t="trades">Closed trades</button>
   <button class="tb" data-t="open">Open</button>
-  <button class="tb" data-t="lp">LP position</button>
+  <button class="tb" data-t="lp">Pool &amp; LP</button>
 </div>
 <div id="tabTrades" class="wrapscroll"></div>
 <div id="tabOpen" class="wrapscroll" hidden></div>
@@ -108,13 +119,23 @@ const E=ethers, $=id=>document.getElementById(id);
 
 const FLOOR=["function positionsOf(address) view returns (uint256[])",
  "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding,uint256 entryBorrow,uint128 stopLoss,uint128 takeProfit) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)"];
+const ERC20=["function balanceOf(address) view returns (uint256)",
+ "function allowance(address,address) view returns (uint256)",
+ "function approve(address,uint256) returns (bool)"];
 const BAL=["function balanceOf(address) view returns (uint256)",
+ "function deposit(uint256,address) returns (uint256)",
+ "function withdraw(uint256,address,address) returns (uint256)",
+ "function redeem(uint256,address,address) returns (uint256)",
+ "function maxWithdraw(address) view returns (uint256)",
+ "function maxRedeem(address) view returns (uint256)",
+ "function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)",
+ "function DEAD_SHARES() view returns (uint256)",
  "function convertToAssets(uint256) view returns (uint256)",
  "function decimals() view returns (uint8)",
  "function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
 
 let provider,signer,me,read;
-let trades=[], lp={dep:0n,wd:0n,shares:0n,value:0n}, openRows=[];
+let trades=[], lp={dep:0n,wd:0n,shares:0n,value:0n}, openRows=[], pool=null, lpMax=0n;
 let scannedTo=0, historyLoaded=false;
 
 /* Closed positions are deleted from contract storage, so events are the only
@@ -380,17 +401,106 @@ function paintLp(){
   const inn=Number(E.formatUnits(lp.dep-lp.wd,6));
   const ret=val-inn;
   const pct=inn>0?(ret/inn*100):0;
-  $("tabLp").innerHTML = lp.shares>0n || lp.dep>0n
-    ? `<table><tbody>
-        <tr><td>Shares held</td><td>${n2(lp.shares,18,6)} BLST</td></tr>
-        <tr><td>Deposited (net of withdrawals)</td><td>${money(inn)} CHIP</td></tr>
-        <tr><td>Redeemable now</td><td>${money(val)} CHIP</td></tr>
-        <tr><td>Return</td><td class="${ret>=0?"ok":"bad"}">${sgn(ret)} CHIP (${pct>=0?"+":""}${pct.toFixed(3)}%)</td></tr>
-      </tbody></table>
-      <div class="none" style="text-align:left">As a depositor you are the counterparty to every trade on the desk.
-      Traders who lose pay into the pool and traders who win are paid from it, so this number moves against them —
-      and every open and close fee lands here regardless of who was right.</div>`
-    : '<div class="none">Not a depositor.<br>Deposits are made on the setup page — depositors take the other side of every trade and collect the fees.</div>';
+  const isLp = lp.shares>0n;
+
+  // Share counts are unreadable — an 18-decimal share against 6-decimal
+  // collateral makes a 300,000 position read as 0.000002. What it is worth
+  // and what fraction of the pool it represents are the two numbers a
+  // depositor actually means.
+  const poolTotal = pool ? Number(E.formatUnits(pool[0],6)) : 0;
+  const poolIdle  = pool ? Number(E.formatUnits(pool[2],6)) : 0;
+  const poolRes   = pool ? Number(E.formatUnits(pool[3],6)) : 0;
+  const share     = poolTotal>0 ? val/poolTotal*100 : 0;
+  const canOut    = Number(E.formatUnits(lpMax,6));
+
+  $("tabLp").innerHTML = `
+    <table><tbody>
+      <tr><td>Pool holds</td><td>${money(poolTotal)} CHIP</td></tr>
+      <tr><td>Idle, free to back new positions</td><td>${money(poolIdle)} CHIP</td></tr>
+      <tr><td>Reserved against open positions</td><td>${money(poolRes)} CHIP</td></tr>
+    </tbody></table>
+    <div style="padding:14px 12px;border-top:1px solid var(--edge)">
+      ${isLp ? `<table style="margin-bottom:12px"><tbody>
+        <tr><td>Your position is worth</td><td>${money(val)} CHIP · ${share.toFixed(1)}% of the pool</td></tr>
+        <tr><td>You put in</td><td>${money(inn)} CHIP</td></tr>
+        <tr><td>Earned as the house</td>
+            <td class="${ret>=0?"ok":"bad"}">${sgn(ret)} CHIP (${pct>=0?"+":""}${pct.toFixed(4)}%)</td></tr>
+        <tr><td>Withdrawable right now</td><td>${money(canOut)} CHIP</td></tr>
+      </tbody></table>`
+      : '<p style="color:var(--mute);font-size:12.5px;margin-bottom:12px">'
+        + 'You are not a depositor. Depositing makes you counterparty to every trade on this desk — '
+        + 'traders who lose pay into the pool, traders who win are paid out of it, and every fee lands '
+        + 'here regardless of who was right.</p>'}
+
+      <div class="lprow">
+        <input type="text" id="lpDep" placeholder="amount to deposit" inputmode="decimal">
+        <button class="lpbtn" id="btnDep">Approve &amp; deposit</button>
+      </div>
+      ${isLp ? `<div class="lprow" style="margin-top:9px">
+        <input type="text" id="lpWd" placeholder="amount to withdraw" inputmode="decimal">
+        <button class="lpbtn ghost" id="btnWd">Withdraw</button>
+        <button class="lpbtn ghost" id="btnWdAll">Withdraw all</button>
+      </div>` : ""}
+      <p class="lpnote">Withdrawals are capped by idle capital rather than by what your shares are worth.
+      Money reserved against an open position belongs to that position until it closes — a winning trader
+      has to be payable from something, and that something cannot also have been withdrawn.
+      ${canOut < val ? `<b>${money(val-canOut)} CHIP of yours is currently backing open positions.</b>` : ""}</p>
+      <div class="why" id="whyLp"></div>
+    </div>`;
+
+  wireLp();
+}
+
+function wireLp(){
+  const why=$("whyLp");
+  const need=()=>{ if(!signer){ why.textContent="Connect a wallet first."; why.className="why err"; return true; } return false; };
+
+  const dep=$("btnDep");
+  if(dep) dep.onclick=async()=>{
+    if(need()) return;
+    const raw=($("lpDep").value||"").trim();
+    if(!raw){ why.textContent="Enter an amount."; why.className="why err"; return; }
+    const amt=E.parseUnits(raw,6);
+    const c=new E.Contract(A.chips,ERC20,signer);
+    const bal=await c.balanceOf(me);
+    if(bal<amt){ why.textContent=`Only ${money(Number(E.formatUnits(bal,6)))} CHIP on hand.`; why.className="why err"; return; }
+    if((await c.allowance(me,A.ballast))<amt)
+      await sendTx(()=>c.approve(A.ballast, E.parseUnits("100000000",6)), "Approve Chips");
+    await sendTx(()=>new E.Contract(A.ballast,BAL,signer).deposit(amt, me), "Deposit "+raw+" CHIP");
+  };
+
+  const wd=$("btnWd");
+  if(wd) wd.onclick=async()=>{
+    if(need()) return;
+    const raw=($("lpWd").value||"").trim();
+    if(!raw){ why.textContent="Enter an amount."; why.className="why err"; return; }
+    const amt=E.parseUnits(raw,6);
+    if(amt>lpMax){ why.textContent=`Only ${money(Number(E.formatUnits(lpMax,6)))} CHIP is free — the rest backs open positions.`; why.className="why err"; return; }
+    await sendTx(()=>new E.Contract(A.ballast,BAL,signer).withdraw(amt, me, me), "Withdraw "+raw+" CHIP");
+  };
+
+  const all=$("btnWdAll");
+  if(all) all.onclick=async()=>{
+    if(need()) return;
+    // Redeem by shares rather than assets so the last exit cannot strand
+    // dust from rounding between the two.
+    const b=new E.Contract(A.ballast,BAL,signer);
+    const sh=await b.maxRedeem(me);
+    if(sh===0n){ why.textContent="Nothing withdrawable right now."; why.className="why err"; return; }
+    await sendTx(()=>b.redeem(sh, me, me), "Withdraw everything available");
+  };
+}
+
+async function sendTx(fn,label){
+  const why=$("whyLp");
+  try{
+    why.textContent="Waiting for signature…"; why.className="why";
+    const tx=await fn();
+    why.textContent="Submitted…";
+    await tx.wait();
+    why.textContent=label+" confirmed."; why.className="why ok";
+    await refresh();
+  }catch(e){ why.textContent=e.shortMessage||e.message||"failed"; why.className="why err"; }
 }
 
 document.querySelectorAll(".tb").forEach(b=>b.onclick=()=>{
@@ -403,11 +513,13 @@ document.querySelectorAll(".tb").forEach(b=>b.onclick=()=>{
 /* ── refresh ──────────────────────────────────────────────────────── */
 async function refresh(){
   const p=provider||rp();
+  try{ pool=await new E.Contract(A.ballast,BAL,p).stats(); }catch(e){}
   if(me){
     try{
       const b=new E.Contract(A.ballast,BAL,p);
       lp.shares=await b.balanceOf(me);
       lp.value =lp.shares>0n ? await b.convertToAssets(lp.shares) : 0n;
+      lpMax    =await b.maxWithdraw(me);
     }catch(e){}
     try{
       const f=new E.Contract(A.floorplan,FLOOR,p);

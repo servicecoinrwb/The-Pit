@@ -123,6 +123,16 @@ body.resizing{cursor:row-resize;user-select:none}
 .up{fill:var(--jade);stroke:var(--jade)}
 .dn{fill:var(--rust);stroke:var(--rust)}
 .wick{stroke-width:1}
+
+/* On paper the convention is fill, not colour: an up bar is hollow with an
+   outline, a down bar is solid. It reads unambiguously in a way colour never
+   quite does, and it is what a printed bar chart has always looked like.
+   Only in the light theme — hollow white on near-black is a different thing
+   altogether. */
+html.light rect.up{fill:var(--slab);stroke:var(--paper);stroke-width:1.1}
+html.light rect.dn{fill:var(--paper);stroke:var(--paper);stroke-width:1.1}
+html.light line.up{stroke:var(--paper)}
+html.light line.dn{stroke:var(--paper)}
 .cross{stroke:var(--mute);stroke-width:.7;stroke-dasharray:3 3}
 .markline{stroke:var(--sky);stroke-width:.8;stroke-dasharray:4 3;opacity:.8}
 .marktag{fill:var(--sky)}
@@ -849,8 +859,15 @@ function drawChart(){
   }
   cs.forEach((c,i)=>{
     const k=c.c>=c.o?"up":"dn", x=X(i);
-    const yo=Y(c.o),yc=Y(c.c),top=Math.min(yo,yc),h=Math.max(1,Math.abs(yc-yo));
-    bodies+=`<line class="wick ${k}" x1="${x.toFixed(1)}" y1="${Y(c.h).toFixed(1)}" x2="${x.toFixed(1)}" y2="${Y(c.l).toFixed(1)}"/>`+
+    const yo=Y(c.o),yc=Y(c.c),top=Math.min(yo,yc);
+    // A zero-height rect renders as nothing when hollow; keep a visible bar.
+    const h=Math.max(1.2,Math.abs(yc-yo));
+    // Two wick segments rather than one line behind the body. A solid body
+    // hides a line drawn through it; a hollow one does not, and the stroke
+    // running across the middle of an up bar looks like a mistake.
+    const yh=Y(c.h), yl=Y(c.l), bot=top+h;
+    bodies+=`<line class="wick ${k}" x1="${x.toFixed(1)}" y1="${yh.toFixed(1)}" x2="${x.toFixed(1)}" y2="${top.toFixed(1)}"/>`+
+            `<line class="wick ${k}" x1="${x.toFixed(1)}" y1="${bot.toFixed(1)}" x2="${x.toFixed(1)}" y2="${yl.toFixed(1)}"/>`+
             `<rect class="${k}" x="${(x-bw/2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"/>`;
   });
 

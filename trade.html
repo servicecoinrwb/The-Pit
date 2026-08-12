@@ -184,6 +184,42 @@ tr.danger td{background:rgba(181,81,47,.11)}
 .mgrrow input:focus{outline:none;border-color:var(--sky)}
 .mgr .why{font-size:11.5px;margin-top:8px}
 @media (max-width:1000px){ .mgr{grid-template-columns:1fr;gap:22px} }
+
+/* ── portfolio and setup panels ───────────────────────────────────── */
+.sec{border-top:1px solid var(--edge);padding:18px 16px}
+.sec:first-child{border-top:0}
+.secH{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:9px}
+.secP{font-size:12px;color:var(--mute);line-height:1.65;max-width:80ch;margin-bottom:13px}
+.secP b{color:var(--paper);font-weight:500}
+
+/* Label left, value right — without this the two run together and read as
+   one string, which is exactly how "Pool holds300,012.97" happened. */
+.kvrow{display:flex;justify-content:space-between;align-items:baseline;gap:18px;
+       padding:8px 0;border-bottom:1px dotted var(--edge);font-size:13px}
+.kvrow:last-of-type{border-bottom:0}
+.kvrow span{color:var(--mute)}
+.kvrow b{font-weight:400;font-variant-numeric:tabular-nums;text-align:right}
+.kvrow b.ok{color:var(--jade)} .kvrow b.bad{color:var(--rust)}
+
+.lprow{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.lprow input{background:var(--ink);color:var(--paper);border:1px solid var(--edge);
+             border-radius:2px;padding:9px 11px;font:13px "IBM Plex Mono",monospace;width:200px}
+.lprow input:focus{outline:none;border-color:var(--sky)}
+.lpbtn{background:var(--sky);color:var(--ink);border:0;border-radius:2px;padding:10px 15px;
+       cursor:pointer;font:600 12px "IBM Plex Sans Condensed",sans-serif;
+       letter-spacing:.07em;text-transform:uppercase}
+.lpbtn:hover{filter:brightness(1.12)}
+.lpbtn.ghost{background:transparent;color:var(--sky);border:1px solid var(--edge)}
+.lpbtn.ghost:hover{border-color:var(--sky)}
+
+#curve{height:240px;padding:4px 8px 0}
+#curve svg{width:100%;height:100%;display:block}
+.curveline{fill:none;stroke-width:1.7;stroke-linejoin:round}
+.zero{stroke:var(--mute);stroke-width:.8;stroke-dasharray:4 3;opacity:.7}
+
+.why{font-size:11.5px;margin-top:10px;color:var(--amber);line-height:1.5}
+.why.err{color:var(--rust)} .why.ok{color:var(--jade)}
 .none{padding:34px 16px;text-align:center;color:var(--mute);font-size:12.5px;line-height:1.7}
 .wrapscroll{overflow-x:auto}
 #log{padding:10px 14px;font-size:11.5px;color:var(--mute);max-height:170px;overflow:auto}

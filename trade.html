@@ -150,6 +150,20 @@ tr.danger td{background:rgba(181,81,47,.11)}
 .mini{background:transparent;border:1px solid var(--edge);color:var(--sky);
       padding:5px 10px;font-size:11px;cursor:pointer;border-radius:2px;letter-spacing:.05em}
 .mini:hover{border-color:var(--sky)}
+.mgr{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.mgrcol{min-width:0}
+.mgrhead{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
+         letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin-bottom:6px}
+.mgrnote{font-size:11.5px;color:var(--mute);line-height:1.6;margin-bottom:10px}
+.mgrnote b{color:var(--paper);font-weight:500}
+.mgrrow{display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end}
+.mgrrow label{display:block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+              color:var(--mute);margin:0}
+.mgrrow input{width:150px;margin-top:4px;background:var(--slab);color:var(--paper);
+              border:1px solid var(--edge);border-radius:2px;padding:8px 10px;font:13px "IBM Plex Mono",monospace}
+.mgrrow input:focus{outline:none;border-color:var(--sky)}
+.mgr .why{font-size:11.5px;margin-top:8px}
+@media (max-width:820px){ .mgr{grid-template-columns:1fr} }
 .none{padding:34px 16px;text-align:center;color:var(--mute);font-size:12.5px;line-height:1.7}
 .wrapscroll{overflow-x:auto}
 #log{padding:10px 14px;font-size:11.5px;color:var(--mute);max-height:170px;overflow:auto}
@@ -883,6 +897,59 @@ function quote(){
 }
 
 /* ── positions ────────────────────────────────────────────────────── */
+/* Which position, if any, has its manage drawer open. Kept outside the
+   render so a refresh mid-edit does not slam the panel shut under you. */
+let openMgr = null;
+const draft = {};                      // id -> {sl, tp, part} as typed
+
+/** The manage drawer, built separately so the row template stays flat —
+ *  a template literal nested inside another one is a syntax trap. */
+function mgrDrawer(id, q, mark, d){
+  const sizeTxt = n2(q.size,6,0);
+  const lo = q.isLong ? "below "+mark.toFixed(2) : "above "+mark.toFixed(2);
+  const hi = q.isLong ? "above "+mark.toFixed(2) : "below "+mark.toFixed(2);
+  const slVal = d.sl ?? (q.stopLoss===0n ? "" : E.formatUnits(q.stopLoss,18));
+  const tpVal = d.tp ?? (q.takeProfit===0n ? "" : E.formatUnits(q.takeProfit,18));
+  const pcts = [25,50,75].map(pc=>'<button class="mini" data-pct="'+id+':'+pc+'">'+pc+'%</button>').join("");
+
+  return '<tr><td colspan="10" style="background:var(--ink);padding:14px 12px">'
+    + '<div class="mgr">'
+    +   '<div class="mgrcol">'
+    +     '<div class="mgrhead">Stop loss and take profit</div>'
+    +     '<p class="mgrnote">Anyone may execute a crossed trigger and takes 0.05% of size for doing it — '
+    +       'that reward is what makes the mechanism actually get serviced rather than merely permitted. '
+    +       '<b>The fill is the oracle price at execution, not your trigger.</b> A gap through a stop fills '
+    +       'past it, which is real slippage; paying out at the trigger would put that gap on the pool. '
+    +       'A halted market executes nothing, so a weekend gap fills on the reopen.</p>'
+    +     '<div class="mgrrow">'
+    +       '<label>Stop loss<input type="text" data-sl="'+id+'" value="'+slVal+'" placeholder="'+lo+'"></label>'
+    +       '<label>Take profit<input type="text" data-tp="'+id+'" value="'+tpVal+'" placeholder="'+hi+'"></label>'
+    +     '</div>'
+    +     '<div class="mgrrow" style="margin-top:8px">'
+    +       '<button class="mini" data-settrig="'+id+'">Set triggers</button>'
+    +       '<button class="mini" data-cleartrig="'+id+'">Clear both</button>'
+    +     '</div>'
+    +     '<div class="why" data-whyT="'+id+'"></div>'
+    +   '</div>'
+    +   '<div class="mgrcol">'
+    +     '<div class="mgrhead">Close part of it</div>'
+    +     '<p class="mgrnote">The remainder keeps the same entry, leverage and liquidation price — only size '
+    +       'and margin shrink. Funding and borrow keep accruing from where they already were, because a '
+    +       'partial close is not a new trade. A leftover under the minimum settles in full rather than '
+    +       'leaving dust behind.</p>'
+    +     '<div class="mgrrow">'
+    +       '<label>Size to close<input type="text" data-part="'+id+'" value="'+(d.part ?? "")+'" '
+    +         'placeholder="of '+sizeTxt+'"></label>'
+    +     '</div>'
+    +     '<div class="mgrrow" style="margin-top:8px">'+pcts
+    +       '<button class="mini" data-doPart="'+id+'">Close that much</button></div>'
+    +     '<div class="mgrrow" style="margin-top:8px">'
+    +       '<button class="mini" data-a="'+id+'">Add 50 margin</button></div>'
+    +     '<div class="why" data-whyP="'+id+'"></div>'
+    +   '</div>'
+    + '</div></td></tr>';
+}
+
 async function paintPos(p){
   if(!me){$("tabPos").innerHTML='<div class="none">Connect a wallet to see your positions.</div>';return;}
   let ids=[]; try{ ids=await C.floor(p).positionsOf(me); }catch(e){ return; }
@@ -893,6 +960,20 @@ async function paintPos(p){
     const sym=(MKT.find(m=>m.id===Number(q.marketId))||{}).sym||q.marketId;
     const pnl=v[2], danger=v[7];
     const pct=q.margin>0n?Number(pnl)*100/Number(q.margin):0;
+    const mark=Number(E.formatUnits(v[1],18));
+    const sl=q.stopLoss, tp=q.takeProfit;
+    const key=String(id);
+    const d=draft[key]||{};
+
+    // A trigger already set is shown on the row itself — a stop you cannot
+    // see at a glance is a stop you will forget you set.
+    const trigCell = (sl===0n && tp===0n)
+      ? '<span style="color:var(--mute)">none</span>'
+      : [ sl!==0n ? `<span class="bad">SL ${n2(sl,18)}</span>` : null,
+          tp!==0n ? `<span class="ok">TP ${n2(tp,18)}</span>` : null
+        ].filter(Boolean).join(" · ");
+
+    const drawer = openMgr===key ? mgrDrawer(id, q, mark, d) : "";
     rows.push(`<tr class="${danger?"danger":""}">
       <td><span class="tag ${q.isLong?"long":"short"}">${q.isLong?"LONG":"SHORT"}</span> ${sym}</td>
       <td>${n2(q.size,6)}</td><td>${n2(q.margin,6)}</td>
@@ -900,23 +981,110 @@ async function paintPos(p){
       <td class="${Number(pnl)>=0?"ok":"bad"}">${Number(pnl)>=0?"+":"-"}${n2(pnl<0n?-pnl:pnl,6)} (${pct.toFixed(1)}%)</td>
       <td>${Number(v[3])>=0?"":"-"}${n2(v[3]<0n?-v[3]:v[3],6)}</td>
       <td class="${danger?"bad":"warn"}">${n2(v[6],18)}</td>
-      <td><button class="mini" data-c="${id}">Close</button>
-          <button class="mini" data-a="${id}">+50</button></td></tr>`);
+      <td style="font-size:11px">${trigCell}</td>
+      <td><button class="mini" data-mgr="${id}">${openMgr===key?"Close panel":"Manage"}</button>
+          <button class="mini" data-c="${id}">Close</button></td></tr>` + drawer);
   }
   $("tabPos").innerHTML = rows.length ? `<table><thead><tr>
       <th>Market</th><th>Size</th><th>Margin</th><th>Entry</th><th>Mark</th>
-      <th>PnL</th><th>Funding</th><th>Liq. price</th><th></th></tr></thead>
+      <th>PnL</th><th>Funding</th><th>Liq. price</th><th>Triggers</th><th></th></tr></thead>
       <tbody>${rows.join("")}</tbody></table>`
     : '<div class="none">No open positions.<br>Rows turn red when equity nears maintenance — anyone can liquidate at that point.</div>';
 
-  $("tabPos").querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>
-    signer ? send(()=>C.floor(signer).close(b.dataset.c),"Close #"+b.dataset.c) : note("Connect a wallet first.","err"));
-  $("tabPos").querySelectorAll("[data-a]").forEach(b=>b.onclick=async()=>{
+  wirePositionControls();
+}
+
+function wirePositionControls(){
+  const T = $("tabPos");
+  const needSigner = el => { if(!signer){ el.textContent="Connect a wallet first."; el.className="why err"; return true; } return false; };
+
+  T.querySelectorAll("[data-mgr]").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.mgr;
+    openMgr = openMgr===k ? null : k;
+    paintPos(provider||rp());
+  });
+
+  T.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>
+    signer ? send(()=>C.floor(signer).close(b.dataset.c),"Close #"+b.dataset.c)
+           : note("Connect a wallet first.","err"));
+
+  T.querySelectorAll("[data-a]").forEach(b=>b.onclick=async()=>{
     if(!signer){note("Connect a wallet first.","err");return;}
     const amt=E.parseUnits("50",6), c=C.chips(signer);
     if((await c.allowance(me,A.floorplan))<amt)
       await send(()=>c.approve(A.floorplan, E.parseUnits("100000000",6)),"Approve Chips for trading");
     await send(()=>C.floor(signer).addMargin(b.dataset.a,amt),"Add margin");
+  });
+
+  // Keep what is typed across the 30s refresh, or a slow typist loses it.
+  T.querySelectorAll("[data-sl]").forEach(i=>i.oninput=()=>{
+    (draft[i.dataset.sl] ||= {}).sl = i.value; });
+  T.querySelectorAll("[data-tp]").forEach(i=>i.oninput=()=>{
+    (draft[i.dataset.tp] ||= {}).tp = i.value; });
+  T.querySelectorAll("[data-part]").forEach(i=>i.oninput=()=>{
+    (draft[i.dataset.part] ||= {}).part = i.value; });
+
+  T.querySelectorAll("[data-pct]").forEach(b=>b.onclick=async()=>{
+    const [id,pc]=b.dataset.pct.split(":");
+    try{
+      const v=await C.floor(provider||rp()).positionView(id);
+      const size=Number(E.formatUnits(v[0].size,6));
+      const amt=(size*Number(pc)/100).toFixed(2);
+      (draft[id] ||= {}).part = amt;
+      const box=T.querySelector(`[data-part="${id}"]`); if(box) box.value=amt;
+    }catch(e){}
+  });
+
+  T.querySelectorAll("[data-settrig]").forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.settrig;
+    const why=T.querySelector(`[data-whyT="${id}"]`);
+    if(needSigner(why)) return;
+    const slv=(T.querySelector(`[data-sl="${id}"]`)?.value||"").trim();
+    const tpv=(T.querySelector(`[data-tp="${id}"]`)?.value||"").trim();
+    if(!slv && !tpv){ why.textContent="Enter a stop, a target, or both."; why.className="why err"; return; }
+
+    // Check the direction here rather than letting the contract reject it —
+    // the revert carries no data on this chain, so a local check is the only
+    // way the reason ever reaches you.
+    try{
+      const v=await C.floor(provider||rp()).positionView(id);
+      const isLong=v[0].isLong, mark=Number(E.formatUnits(v[1],18));
+      const sl=slv?Number(slv):0, tp=tpv?Number(tpv):0;
+      const bad =
+        isLong ? (sl && sl>=mark ? "A long's stop has to sit below the mark." :
+                  tp && tp<=mark ? "A long's target has to sit above the mark." : null)
+               : (sl && sl<=mark ? "A short's stop has to sit above the mark." :
+                  tp && tp>=mark ? "A short's target has to sit below the mark." : null);
+      if(bad){ why.textContent=bad+` Mark is ${mark.toFixed(2)}.`; why.className="why err"; return; }
+    }catch(e){}
+
+    const sl18 = slv ? E.parseUnits(slv,18) : 0n;
+    const tp18 = tpv ? E.parseUnits(tpv,18) : 0n;
+    delete draft[id];
+    await send(()=>C.floor(signer).setTriggers(id, sl18, tp18), "Set triggers on #"+id);
+  });
+
+  T.querySelectorAll("[data-cleartrig]").forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.cleartrig;
+    const why=T.querySelector(`[data-whyT="${id}"]`);
+    if(needSigner(why)) return;
+    delete draft[id];
+    await send(()=>C.floor(signer).setTriggers(id, 0n, 0n), "Clear triggers on #"+id);
+  });
+
+  T.querySelectorAll("[data-doPart]").forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.doPart;
+    const why=T.querySelector(`[data-whyP="${id}"]`);
+    if(needSigner(why)) return;
+    const raw=(T.querySelector(`[data-part="${id}"]`)?.value||"").trim();
+    if(!raw){ why.textContent="Enter how much of the size to close."; why.className="why err"; return; }
+    const amt=E.parseUnits(raw,6);
+    try{
+      const v=await C.floor(provider||rp()).positionView(id);
+      if(amt>v[0].size){ why.textContent=`That is more than the position holds (${n2(v[0].size,6)}).`; why.className="why err"; return; }
+    }catch(e){}
+    delete draft[id];
+    await send(()=>C.floor(signer).closePartial(id, amt), "Close part of #"+id);
   });
 }
 

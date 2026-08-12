@@ -1724,20 +1724,31 @@ function wireLp(){
 }
 
 /* ── admin ────────────────────────────────────────────────────────── */
+let ownerKnown=false;
 async function checkOwner(p){
-  if(!me){ isOwner=false; $("ownerOnly").hidden=true; return; }
-  try{
-    const o=await new E.Contract(A.engine,ENG2,p).owner();
-    isOwner = o.toLowerCase()===me.toLowerCase();
-    $("aOwner").textContent = isOwner ? "you" : short(o);
-  }catch(e){
-    // An unreadable owner is not the same as not being the owner. Keep the
-    // last known answer rather than hiding the panel on a flaky read.
-    $("aOwner").textContent = "could not read";
+  if(!me){ isOwner=false; ownerKnown=false; $("ownerOnly").hidden=true; }
+  else{
+    try{
+      const o=await new E.Contract(A.engine,ENG2,p).owner();
+      isOwner = o.toLowerCase()===me.toLowerCase();
+      ownerKnown = true;
+      $("aOwner").textContent = isOwner ? "you" : short(o);
+      $("aOwner").className = isOwner ? "ok" : "";
+    }catch(e){
+      // An unreadable owner is not the same as not being the owner, so the
+      // last known answer stands — but the label has to say it is stale
+      // rather than sitting next to a confident claim and contradicting it.
+      $("aOwner").textContent = ownerKnown
+        ? (isOwner ? "you (last read; the chain is not answering now)"
+                   : "not you (last read; the chain is not answering now)")
+        : "could not read";
+      $("aOwner").className = "";
+    }
   }
   $("ownerOnly").hidden = !isOwner;
   $("aOwnerNote").textContent = !me
     ? "Connect a wallet to see whether you hold the owner key."
+    : !ownerKnown ? "Ownership could not be checked — that is the RPC refusing, not a permissions problem."
     : isOwner ? "You hold the owner key, so the controls below will go through."
     : "These controls exist but every one of them reverts from this address. The contracts enforce that, not the page.";
 }
@@ -1867,16 +1878,38 @@ $("aExec").onclick=()=>
 async function paintOwnerState(p){
   try{
     const en=new E.Contract(A.engine,ENG2,p);
-    const names=[];
-    for(const m of MKT){
-      try{ const c=await en.markets(m.id); if(c.listed) names.push(c.symbol + (c.paused?" (paused)":"")); }catch{}
+    // One batched read rather than nine. Nine individual reads with silent
+    // catches meant a couple of refusals rendered as "none", which reads as
+    // a fact about the chain rather than a failure to ask it.
+    const packed=await batch(p, MKT.map(m=>({to:A.engine,
+      data:en.interface.encodeFunctionData("markets",[m.id])})));
+    const names=[]; let failed=0;
+    if(packed){
+      MKT.forEach((m,i)=>{
+        if(!packed[i].success){ failed++; return; }
+        const c=en.interface.decodeFunctionResult("markets",packed[i].returnData);
+        if(c[0]) names.push(c[9] + (c[1]?" (paused)":""));
+      });
+    } else {
+      for(const m of MKT){
+        try{ const c=await en.markets(m.id); if(c.listed) names.push(c.symbol+(c.paused?" (paused)":"")); }
+        catch{ failed++; }
+      }
     }
-    $("aMkts").textContent = names.length ? names.join(" · ") : "none";
+    $("aMkts").textContent = failed && !names.length
+      ? "could not read — the RPC refused"
+      : names.length ? names.join(" · ") + (failed?`  (${failed} unread)`:"")
+      : "none listed";
+    $("aMkts").className = failed && !names.length ? "bad" : "";
+
     const cfg=await en.markets(MKT[0].id);
     const f=Number(cfg.fundingFactor);
     $("aFund").textContent=(f/1e6*100).toFixed(4)+"%/hr · "+(f/1e6*100*24).toFixed(2)+"%/day  (factor "+f+")";
-    $("aFund").className = "" + (f>=10000?"ok":"bad");
-  }catch(e){}
+    $("aFund").className = f>=10000?"ok":"bad";
+  }catch(e){
+    $("aMkts").textContent="could not read — the RPC refused";
+    $("aMkts").className="bad";
+  }
 
   try{
     const v=new E.Contract(A.ballast,VAULT,p);

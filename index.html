@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Pit — a pool-backed perp desk on Arc</title>
 <meta name="description" content="Perpetuals on Arc testnet. No order book. The pool takes the other side of every trade.">
-<link rel="preconnect" href="https://fonts.googleapis.com"> 
+<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -32,7 +32,7 @@ h1 em{font-style:normal;color:var(--sky)}
 
 /* ── the pit ──────────────────────────────────────── */
 .pit{margin:6px auto 0;max-width:860px}
-.pit svg{width:100%;height:auto;display:block;overflow:visible}
+.pit svg{width:100%;height:auto;display:block}
 .ring{fill:none;stroke:var(--edge);stroke-width:1.3}
 .ring.r1{stroke:#2c4364} .ring.r2{stroke:#293e5c} .ring.r3{stroke:#263a55}
 .floor{fill:var(--slab);stroke:var(--edge);stroke-width:1.3}
@@ -49,7 +49,7 @@ h1 em{font-style:normal;color:var(--sky)}
 }
 
 /* ── enter ────────────────────────────────────────── */
-.enter{text-align:center;padding:22px 0 8px}
+.enter{text-align:center;padding:8px 0 8px}
 .btn{display:inline-block;font:700 14px/1 "IBM Plex Sans Condensed",sans-serif;
      letter-spacing:.12em;text-transform:uppercase;background:var(--sky);color:var(--ink);
      padding:16px 40px;border-radius:2px;text-decoration:none}
@@ -105,7 +105,7 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
 
   <!-- the floor itself: stepped octagon, and nobody standing in it -->
   <div class="pit">
-    <svg viewBox="-30 -20 900 420" xmlns="http://www.w3.org/2000/svg" role="img"
+    <svg viewBox="-30 -20 900 470" xmlns="http://www.w3.org/2000/svg" role="img"
          aria-label="A stepped octagonal trading pit with live prices around its rim">
 
       <polygon class="ring"    points="697.2,269.7 534.8,354.1 305.2,354.1 142.8,269.7 142.8,150.3 305.2,65.9 534.8,65.9 697.2,150.3"/>
@@ -127,17 +127,17 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
       </g>
 
       <!-- live readouts around the rim -->
-      <g id="mkETH"  transform="translate(150,36)">
+      <g id="mkETH"  transform="translate(150,28)">
         <text class="mk-sym" x="0" y="0">ETH</text>
         <text class="mk-px"  x="0" y="24" id="pxETH">—</text>
         <text class="mk-st"  x="0" y="41" id="stETH">reading chain</text>
       </g>
-      <g id="mkBTC"  transform="translate(560,36)">
+      <g id="mkBTC"  transform="translate(560,28)">
         <text class="mk-sym" x="0" y="0">BTC</text>
         <text class="mk-px"  x="0" y="24" id="pxBTC">—</text>
         <text class="mk-st"  x="0" y="41" id="stBTC">reading chain</text>
       </g>
-      <g id="mkUS30" transform="translate(355,388)">
+      <g id="mkUS30" transform="translate(355,392)">
         <text class="mk-sym" x="0" y="0">US30</text>
         <text class="mk-px"  x="0" y="24" id="pxUS30">—</text>
         <text class="mk-st"  x="0" y="41" id="stUS30">reading chain</text>

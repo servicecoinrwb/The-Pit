@@ -1623,7 +1623,10 @@ async function send(fn,label){
     note("Waiting for signature…","");
     const tx=await fn(); note("Submitted…",""); log(label+" submitted",tx.hash);
     await tx.wait(); note(label+" confirmed.","ok"); log(label+" confirmed",tx.hash);
+    // Anything that settles writes an event the history depends on.
+    histLoaded=false;
     await refresh();
+    loadHistory();
   }catch(e){const m=e.shortMessage||e.reason||e.message||"failed";note(m,"err");log(label+" failed: "+m);}
 }
 
@@ -1695,6 +1698,11 @@ document.querySelectorAll("[data-ftab]").forEach(b=>b.onclick=()=>{
 /* ── portfolio state ──────────────────────────────────────────────── */
 let trades=[], lpShares=0n, lpValue=0n, lpMax=0n, lpIn=0n, lpOut=0n;
 let histLoaded=false, histRunning=false, histNote="";
+/* Tracks whether the LP figures have ever been read, as distinct from having
+   been read and come back empty. "not in the readable range" is a claim about
+   the chain; "not read yet" is a claim about this page, and they should not
+   look the same. */
+let lpHistRead=false;
 let isOwner=false;
 
 /* Log scans are slow and can hang. They used to run inside the refresh
@@ -1742,6 +1750,7 @@ async function loadHistory(){
     lpIn=0n; lpOut=0n;
     for(const l of dp){ try{ lpIn  += iB.parseLog(l).args[2]; }catch{} }
     for(const l of wd){ try{ lpOut += iB.parseLog(l).args[3]; }catch{} }
+    lpHistRead=true;
 
     histLoaded=true;
     histNote = out.length ? "" : "No closed trades on this desk yet.";
@@ -1795,7 +1804,8 @@ function paintFStats(){
     <div class="stat"><span class="k">Earned as the house</span>
       <span class="v ${put>0?((val-put)>=0?"ok":"bad"):""}">${
         lpShares===0n?"—":put>0?sgn(val-put):"unknown"}</span>
-      <span class="s">${put>0?money(put)+" deposited":"deposit history not read"}</span></div>`;
+      <span class="s">${put>0?money(put,2)+" deposited"
+        : !lpHistRead ? "reading deposit history…" : "no deposits found"}</span></div>`;
 }
 
 function paintClosed(){
@@ -1855,8 +1865,13 @@ function paintLp(){
     <div class="kvrow"><span>Reserved against open positions</span><b>${money(res,2)} CHIP</b></div>
     ${lpShares>0n?`
     <div class="kvrow"><span>Your position is worth</span><b>${money(val,2)} CHIP · ${share.toFixed(1)}% of the pool</b></div>
-    <div class="kvrow"><span>You put in</span><b>${put>0?money(put,2)+" CHIP":"<span style='color:var(--amber)'>not in the readable range</span>"}</b></div>
-    <div class="kvrow"><span>Earned as the house</span><b class="${put>0?((val-put)>=0?"ok":"bad"):""}">${put>0?sgn(val-put)+" CHIP":"needs the deposit history"}</b></div>
+    <div class="kvrow"><span>You put in</span><b>${
+      put>0 ? money(put,2)+" CHIP"
+      : !lpHistRead ? "<span style='color:var(--mute)'>reading deposit history…</span>"
+      : "<span style='color:var(--amber)'>no deposits found in the readable range</span>"}</b></div>
+    <div class="kvrow"><span>Earned as the house</span><b class="${put>0?((val-put)>=0?"ok":"bad"):""}">${
+      put>0 ? sgn(val-put)+" CHIP"
+      : "<span style='color:var(--mute)'>needs the deposit history</span>"}</b></div>
     <div class="kvrow"><span>Withdrawable right now</span><b>${money(free,2)} CHIP</b></div>`:`
     <p class="secP" style="margin-top:12px">You are not a depositor. Depositing makes you counterparty to
     every trade here — traders who lose pay into the pool, traders who win are paid out of it, and every
@@ -1884,7 +1899,11 @@ function wireLp(){
     try{ why.textContent="Waiting for signature…"; why.className="why";
       const t=await fn(); why.textContent="Submitted…"; await t.wait();
       why.textContent=label+" confirmed."; why.className="why ok";
-      histLoaded=false; await refresh(); loadHistory();
+      // The scan latches once it succeeds, so without clearing this a deposit
+      // made after the first load would never be seen and the panel would go
+      // on reporting an empty deposit history.
+      histLoaded=false; lpHistRead=false;
+      await refresh(); await loadHistory();
     }catch(e){ why.textContent=e.shortMessage||e.message; why.className="why err"; }
   };
   const dep=$("btnDep"); if(dep) dep.onclick=async()=>{

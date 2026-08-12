@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Pit — trade</title>
+<title>The Pit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -30,6 +30,10 @@ button,select,input{font-family:inherit}
 .pill{border:1px solid var(--edge);border-radius:2px;padding:6px 11px;color:var(--mute);
       text-decoration:none;display:inline-flex;align-items:center;gap:7px}
 .pill:hover{border-color:var(--sky);color:var(--paper)}
+.pill.view{background:transparent;cursor:pointer;font:inherit;font-size:12px}
+.pill.view.on{border-color:var(--sky);color:var(--paper);background:rgba(111,183,227,.10)}
+[data-panel]{display:none}
+[data-panel].on{display:block}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--rust);flex:none}
 .dot.on{background:var(--jade)}
 
@@ -202,14 +206,16 @@ tr.danger td{background:rgba(181,81,47,.11)}
   <div class="topright">
     <span class="rpcwarn" id="rpcWarn"></span>
     <button class="pill" id="btnRpc" title="Switch price data endpoint">RPC <span id="rpcN"></span></button>
-    <a class="pill" href="portfolio.html">Portfolio</a>
-    <a class="pill" href="setup.html">Setup &amp; admin</a>
+    <button class="pill view on" data-view="trade">Trade</button>
+    <button class="pill view" data-view="folio">Portfolio</button>
+    <button class="pill view" data-view="admin">Setup</button>
     <button class="pill" id="btnConnect" style="background:transparent;cursor:pointer">
       <span class="dot" id="dot"></span><span id="who">Connect</span>
     </button>
   </div>
 </div>
 
+<div data-panel="trade" class="on">
 <div class="mkts" id="mkts"></div>
 <div class="pending">
   <span class="pl">Feeds</span>
@@ -288,6 +294,67 @@ tr.danger td{background:rgba(181,81,47,.11)}
   <div id="tabDesk" class="wrapscroll" hidden></div>
   <div id="tabLog" hidden><div id="log"></div></div>
 </div>
+</div><!-- /trade -->
+
+<!-- ── portfolio ──────────────────────────────────────────────────── -->
+<div data-panel="folio">
+  <div class="stats" id="fStats"></div>
+  <div class="sec">
+    <h3 class="secH">Equity curve</h3>
+    <p class="secP">Cumulative net result of every closed trade, in order. Net means what came back less
+    what went in — price move, funding and both fees. It is the only number that says whether trading
+    here made or lost money.</p>
+    <div id="curve"></div>
+  </div>
+  <div class="tabs">
+    <button class="tb on" data-ftab="closed">Closed trades</button>
+    <button class="tb" data-ftab="lp">Pool &amp; LP</button>
+  </div>
+  <div id="fClosed" class="wrapscroll"></div>
+  <div id="fLp" hidden></div>
+</div>
+
+<!-- ── setup and admin ────────────────────────────────────────────── -->
+<div data-panel="admin">
+  <div class="sec">
+    <h3 class="secH">Test collateral</h3>
+    <p class="secP">Chips stands in for USDC because the Arc faucet gives a dollar a day, which cannot
+    seed a pool deep enough for any number here to mean anything. Six decimals, open mint, worthless
+    on purpose.</p>
+    <div class="kvrow"><span>Your balance</span><b id="aChip">—</b></div>
+    <div class="lprow" style="margin-top:10px">
+      <button class="lpbtn" id="aMint">Mint 100,000</button>
+      <button class="lpbtn ghost" id="aMint5">Mint 500,000</button>
+    </div>
+    <div class="why" id="whyMint"></div>
+  </div>
+
+  <div class="sec" id="ownerOnly" hidden>
+    <h3 class="secH">Owner</h3>
+    <div class="kvrow"><span>Price engine owner</span><b id="aOwner">—</b></div>
+    <div class="kvrow"><span>Funding at full skew</span><b id="aFund">—</b></div>
+    <p class="secP">Funding is what pushes back when the desk piles onto one side and the pool takes the
+    other. A factor of 10000 gives 1% an hour at full skew, which is a real carrying cost; the existing
+    cap holds it there exactly.</p>
+    <div class="lprow">
+      <input type="text" id="aPusher" placeholder="feeder address">
+      <button class="lpbtn ghost" id="aSetPusher">Authorise pusher</button>
+    </div>
+    <div class="lprow" style="margin-top:9px">
+      <input type="text" id="aFpId" placeholder="market id" style="width:110px">
+      <input type="text" id="aFpPx" placeholder="price" style="width:150px">
+      <button class="lpbtn ghost" id="aForce">Force push</button>
+    </div>
+    <p class="secP" style="margin-top:8px">Force push skips the deviation breaker. For reopens after a
+    gap, and nothing else.</p>
+    <div class="why" id="whyAdmin"></div>
+  </div>
+
+  <div class="sec">
+    <h3 class="secH">Contracts</h3>
+    <div id="aAddrs"></div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
 <script>
@@ -313,7 +380,19 @@ const MKT=[
 ];
 const STATUS=["Live","Not listed","Paused","No price","Stale","Closed"];
 const TFS=[{k:"1m",s:60},{k:"5m",s:300},{k:"15m",s:900},{k:"1h",s:3600}];
-const E=ethers, $=id=>document.getElementById(id);
+const E=ethers;
+/* A missing element absorbs writes instead of throwing. Panels have moved
+   around enough that a stale reference has taken down a whole refresh more
+   than once, blanking every live panel below the dead line. */
+const NULLNODE=new Proxy({},{
+  get(_,k){
+    if(k==="querySelectorAll"||k==="querySelector") return ()=>[];
+    if(k==="className"||k==="textContent"||k==="innerHTML") return "";
+    return ()=>{};
+  },
+  set(){ return true; },
+});
+const $=id=>document.getElementById(id)||NULLNODE;
 
 const ERC20=["function balanceOf(address) view returns (uint256)",
   "function allowance(address,address) view returns (uint256)",
@@ -328,6 +407,23 @@ const FLOOR=["function open(uint256,bool,uint256,uint256) returns (uint256)",
   "function closePartial(uint256,uint256)",
   "function executeTrigger(uint256)",
   "function triggerReady(uint256) view returns (bool ready,bool isStop,uint256 price)"];
+const BAL2=["function balanceOf(address) view returns (uint256)",
+  "function convertToAssets(uint256) view returns (uint256)",
+  "function maxWithdraw(address) view returns (uint256)",
+  "function maxRedeem(address) view returns (uint256)",
+  "function deposit(uint256,address) returns (uint256)",
+  "function withdraw(uint256,address,address) returns (uint256)",
+  "function redeem(uint256,address,address) returns (uint256)",
+  "function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
+const CHIPS=["function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)",
+  "function faucet()","function mint(address,uint256)"];
+const ENG2=["function owner() view returns (address)",
+  "function isPusher(address) view returns (bool)",
+  "function setPusher(address,bool)",
+  "function forcePush(uint256,uint128)",
+  "function markets(uint256) view returns (bool listed,bool paused,bool hasSessions,uint16 maxLeverageX,uint16 maxDeviationBps,uint32 maxStaleness,uint32 fundingFactor,uint32 maxFundingBps,uint128 maxOpenInterest,string symbol)"];
 const ENG=["function peek(uint256) view returns (uint256 value,uint64 updatedAt,uint64 roundId,uint8 s)"];
 const BAL=["function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
 
@@ -1182,6 +1278,7 @@ async function refresh(){
   try{ quote(); }catch(e){ log("Quote failed: "+e.message); }
   try{ await paintPos(p); }catch(e){ log("Positions failed: "+e.message); }
   try{ await paintDesk(p); }catch(e){ log("Desk failed: "+e.message); }
+  try{ await paintSide(p); }catch(e){ log("Side failed: "+e.message); }
 }
 
 /* ── wallet ───────────────────────────────────────────────────────── */
@@ -1236,6 +1333,303 @@ $("btnGo").onclick=async()=>{
     await send(()=>c.approve(A.floorplan, MAXAPPROVE),"Approve Chips for trading");
   await send(()=>C.floor(signer).open(cur,side==="long",size,marg),"Open "+side);
 };
+
+
+/* ── views ────────────────────────────────────────────────────────── */
+let view = "trade";
+document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{
+  view=b.dataset.view;
+  document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("on",x.dataset.view===view));
+  document.querySelectorAll("[data-panel]").forEach(x=>x.classList.toggle("on",x.dataset.panel===view));
+  if(view==="trade") drawChart();
+  if(view==="folio"){ drawCurve(); loadHistory(); }
+  paint();
+});
+document.querySelectorAll("[data-ftab]").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("[data-ftab]").forEach(x=>x.classList.toggle("on",x===b));
+  $("fClosed").hidden = b.dataset.ftab!=="closed";
+  $("fLp").hidden     = b.dataset.ftab!=="lp";
+});
+
+/* ── portfolio state ──────────────────────────────────────────────── */
+let trades=[], lpShares=0n, lpValue=0n, lpMax=0n, lpIn=0n, lpOut=0n;
+let histLoaded=false, histRunning=false, histNote="";
+let isOwner=false;
+
+/* Log scans are slow and can hang. They used to run inside the refresh
+   cycle, before anything painted — five parallel walks of up to four hundred
+   requests each, so a single position took a thousand calls to appear and
+   usually never did. Now they run detached: the page paints from cheap reads
+   at once and the history fills in behind it. */
+async function loadHistory(){
+  if(histLoaded||histRunning||!me) return;
+  histRunning=true; histNote="reading trade history…"; paintClosed();
+  try{
+    const p=provider||rp();
+    const pad=E.zeroPadValue(me,32);
+    const latest=await p.getBlockNumber();
+    const iF=new E.Interface([
+      "event Opened(uint256 indexed id,address indexed trader,uint256 indexed marketId,bool isLong,uint256 size,uint256 margin,uint256 entryPrice,uint256 fee)",
+      "event Closed(uint256 indexed id,address indexed trader,uint256 exitPrice,int256 pnl,int256 funding,uint256 fee,uint256 returned)"]);
+    const iB=new E.Interface([
+      "event Deposit(address indexed sender,address indexed owner,uint256 assets,uint256 shares)",
+      "event Withdraw(address indexed sender,address indexed receiver,address indexed owner,uint256 assets,uint256 shares)"]);
+
+    // Sequential, not parallel. Five concurrent walks against one endpoint is
+    // how the requests got refused in the first place.
+    const op = await scan(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest);
+    const cl = await scan(p,A.floorplan,[E.id("Closed(uint256,address,uint256,int256,int256,uint256,uint256)"),null,pad],latest);
+    const dp = await scan(p,A.ballast,[E.id("Deposit(address,address,uint256,uint256)"),null,pad],latest);
+    const wd = await scan(p,A.ballast,[E.id("Withdraw(address,address,address,uint256,uint256)"),null,pad],latest);
+
+    const opens=new Map();
+    for(const l of op){ try{ const d=iF.parseLog(l);
+      opens.set(d.args[0].toString(),{market:Number(d.args[2]),isLong:d.args[3],
+        size:d.args[4],margin:d.args[5],entry:d.args[6],fee:d.args[7],block:l.blockNumber}); }catch{} }
+
+    const out=[];
+    for(const l of cl){ try{
+      const d=iF.parseLog(l); const id=d.args[0].toString(); const o=opens.get(id); if(!o) continue;
+      // Indexed params occupy slots too: [0] id, [1] trader, [2] exitPrice.
+      const ret=d.args[6], inAmt=o.margin+o.fee;
+      out.push({id,market:o.market,isLong:o.isLong,size:o.size,entry:o.entry,
+        exit:d.args[2],pnl:d.args[3],funding:d.args[4],fees:o.fee+d.args[5],
+        net:ret-inAmt,block:l.blockNumber});
+    }catch{} }
+    trades=out.sort((a,b)=>a.block-b.block);
+
+    lpIn=0n; lpOut=0n;
+    for(const l of dp){ try{ lpIn  += iB.parseLog(l).args[2]; }catch{} }
+    for(const l of wd){ try{ lpOut += iB.parseLog(l).args[3]; }catch{} }
+
+    histLoaded=true;
+    histNote = out.length ? "" : "No closed trades on this desk yet.";
+  }catch(e){
+    histNote = "Could not read history: "+(e.shortMessage||e.message);
+  }
+  histRunning=false;
+  paintClosed(); drawCurve(); paintFStats(); paintLp();
+}
+
+async function scan(p,address,topics,latest,back=1200000){
+  const out=[]; const floor=Math.max(0,latest-back);
+  let from=latest, span=5000, tries=0, refusals=0;
+  while(from>floor && tries<400){
+    const lo=Math.max(floor,from-span);
+    try{
+      out.push(...await p.getLogs({address,topics,fromBlock:lo,toBlock:from}));
+      from=lo-1; tries++;
+      if(span<5000) span=Math.min(5000,Math.floor(span*1.6));
+    }catch(e){
+      refusals++;
+      if(span>250 && refusals<40){ span=Math.floor(span/2); continue; }
+      break;
+    }
+  }
+  return out;
+}
+
+/* ── portfolio painters ───────────────────────────────────────────── */
+function paintFStats(){
+  const net=trades.reduce((a,t)=>a+Number(E.formatUnits(t.net,6)),0);
+  const gross=trades.reduce((a,t)=>a+Number(E.formatUnits(t.pnl,6)),0);
+  const fees=trades.reduce((a,t)=>a+Number(E.formatUnits(t.fees,6)),0);
+  const wins=trades.filter(t=>t.net>0n).length;
+  const val=Number(E.formatUnits(lpValue,6));
+  const put=Number(E.formatUnits(lpIn-lpOut,6));
+  const sgn=v=>(v>=0?"+":"-")+money(Math.abs(v));
+
+  $("fStats").innerHTML=`
+    <div class="stat"><span class="k">Realized net</span>
+      <span class="v ${net>=0?"ok":"bad"}">${trades.length?sgn(net):"—"}</span>
+      <span class="s">${trades.length?sgn(gross)+" on price, less costs":"no closed trades yet"}</span></div>
+    <div class="stat"><span class="k">Win rate</span>
+      <span class="v">${trades.length?Math.round(wins/trades.length*100)+"%":"—"}</span>
+      <span class="s">${wins} up · ${trades.length-wins} down</span></div>
+    <div class="stat"><span class="k">Fees paid</span><span class="v">${money(fees)}</span>
+      <span class="s">0.1% each way on size</span></div>
+    <div class="stat"><span class="k">Your LP position</span>
+      <span class="v">${lpShares>0n?money(val):"—"}</span>
+      <span class="s">${lpShares>0n?"in the pool":"not a depositor"}</span></div>
+    <div class="stat"><span class="k">Earned as the house</span>
+      <span class="v ${put>0?((val-put)>=0?"ok":"bad"):""}">${
+        lpShares===0n?"—":put>0?sgn(val-put):"unknown"}</span>
+      <span class="s">${put>0?money(put)+" deposited":"deposit history not read"}</span></div>`;
+}
+
+function paintClosed(){
+  if(!trades.length){
+    $("fClosed").innerHTML=`<div class="none">${histNote||"Connect a wallet to load history."}<br>
+      Closed positions are deleted from contract storage, so events are the only record.</div>`;
+    return;
+  }
+  const rows=[...trades].reverse().map(t=>`<tr>
+    <td><span class="tag ${t.isLong?"long":"short"}">${t.isLong?"LONG":"SHORT"}</span> ${(MKT.find(m=>m.id===t.market)||{}).sym||t.market}</td>
+    <td>${n2(t.size,6,0)}</td><td>${n2(t.entry,18)}</td><td>${n2(t.exit,18)}</td>
+    <td class="${t.pnl>=0n?"ok":"bad"}">${t.pnl>=0n?"+":"-"}${n2(t.pnl<0n?-t.pnl:t.pnl,6)}</td>
+    <td>${n2(t.fees,6)}</td>
+    <td class="${t.net>=0n?"ok":"bad"}">${t.net>=0n?"+":"-"}${n2(t.net<0n?-t.net:t.net,6)}</td></tr>`).join("");
+  $("fClosed").innerHTML=`<table><thead><tr><th>Market</th><th>Size</th><th>Entry</th>
+    <th>Exit</th><th>Price PnL</th><th>Fees</th><th>Net</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function drawCurve(){
+  const box=$("curve"); if(!box) return;
+  if(!trades.length){ box.innerHTML='<div class="none">The curve appears once a position has closed.</div>'; return; }
+  const pts=[0]; let run=0;
+  for(const t of trades){ run+=Number(E.formatUnits(t.net,6)); pts.push(run); }
+  const W=Math.max(360,box.clientWidth||900), H=Math.max(180,box.clientHeight||240);
+  const PL=8,PR=66,PT=12,PB=20;
+  let lo=Math.min(0,...pts), hi=Math.max(0,...pts);
+  if(hi===lo){hi=lo+1;lo-=1;}
+  const pad=(hi-lo)*0.15; lo-=pad; hi+=pad;
+  const X=i=>PL+(pts.length>1?i/(pts.length-1):0)*(W-PL-PR);
+  const Y=v=>PT+(hi-v)/(hi-lo)*(H-PT-PB);
+  let grid="";
+  for(let i=0;i<=3;i++){ const v=lo+(hi-lo)*i/3,y=Y(v);
+    grid+=`<line class="gl" x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"/>`
+       +  `<text class="ax" x="${W-PR+6}" y="${(y+3.5).toFixed(1)}">${money(v)}</text>`; }
+  const line=pts.map((v,i)=>`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+  const last=pts[pts.length-1], col=last>=0?"var(--jade)":"var(--rust)";
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    ${grid}<polyline class="curveline" points="${line}" stroke="${col}"/>
+    <line class="zero" x1="${PL}" y1="${Y(0).toFixed(1)}" x2="${W-PR}" y2="${Y(0).toFixed(1)}"/>
+    <circle cx="${X(pts.length-1).toFixed(1)}" cy="${Y(last).toFixed(1)}" r="3.5" fill="${col}"/>
+  </svg>`;
+}
+
+function paintLp(){
+  const val=Number(E.formatUnits(lpValue,6));
+  const put=Number(E.formatUnits(lpIn-lpOut,6));
+  const free=Number(E.formatUnits(lpMax,6));
+  const tot=pool?Number(E.formatUnits(pool[0],6)):0;
+  const idle=pool?Number(E.formatUnits(pool[2],6)):0;
+  const res=pool?Number(E.formatUnits(pool[3],6)):0;
+  const share=tot>0?val/tot*100:0;
+  const sgn=v=>(v>=0?"+":"-")+money(Math.abs(v));
+
+  $("fLp").innerHTML=`<div class="sec" style="border-top:0">
+    <div class="kvrow"><span>Pool holds</span><b>${money(tot)} CHIP</b></div>
+    <div class="kvrow"><span>Idle, free to back new positions</span><b>${money(idle)} CHIP</b></div>
+    <div class="kvrow"><span>Reserved against open positions</span><b>${money(res)} CHIP</b></div>
+    ${lpShares>0n?`
+    <div class="kvrow"><span>Your position is worth</span><b>${money(val)} CHIP · ${share.toFixed(1)}% of the pool</b></div>
+    <div class="kvrow"><span>You put in</span><b>${put>0?money(put)+" CHIP":"<span style='color:var(--amber)'>not in the readable range</span>"}</b></div>
+    <div class="kvrow"><span>Earned as the house</span><b class="${put>0?((val-put)>=0?"ok":"bad"):""}">${put>0?sgn(val-put)+" CHIP":"needs the deposit history"}</b></div>
+    <div class="kvrow"><span>Withdrawable right now</span><b>${money(free)} CHIP</b></div>`:`
+    <p class="secP" style="margin-top:12px">You are not a depositor. Depositing makes you counterparty to
+    every trade here — traders who lose pay into the pool, traders who win are paid out of it, and every
+    fee lands here regardless of who was right.</p>`}
+    <div class="lprow" style="margin-top:12px">
+      <input type="text" id="lpDep" placeholder="amount to deposit">
+      <button class="lpbtn" id="btnDep">Approve &amp; deposit</button>
+    </div>
+    ${lpShares>0n?`<div class="lprow" style="margin-top:9px">
+      <input type="text" id="lpWd" placeholder="amount to withdraw">
+      <button class="lpbtn ghost" id="btnWd">Withdraw</button>
+      <button class="lpbtn ghost" id="btnWdAll">Withdraw all</button>
+    </div>`:""}
+    <p class="secP" style="margin-top:11px">Withdrawals are capped by idle capital rather than by what your
+    shares are worth. Money reserved against an open position belongs to that position until it closes.
+    ${free<val?`<b style="color:var(--amber);font-weight:400">${money(val-free)} CHIP of yours is backing open positions.</b>`:""}</p>
+    <div class="why" id="whyLp"></div></div>`;
+  wireLp();
+}
+
+function wireLp(){
+  const why=$("whyLp");
+  const guard=()=>{ if(!signer){ why.textContent="Connect a wallet first."; why.className="why err"; return true;} return false; };
+  const tx=async(fn,label)=>{
+    try{ why.textContent="Waiting for signature…"; why.className="why";
+      const t=await fn(); why.textContent="Submitted…"; await t.wait();
+      why.textContent=label+" confirmed."; why.className="why ok";
+      histLoaded=false; await refresh(); loadHistory();
+    }catch(e){ why.textContent=e.shortMessage||e.message; why.className="why err"; }
+  };
+  const dep=$("btnDep"); if(dep) dep.onclick=async()=>{
+    if(guard()) return;
+    const raw=($("lpDep").value||"").trim(); if(!raw){why.textContent="Enter an amount.";why.className="why err";return;}
+    const amt=E.parseUnits(raw,6);
+    const c=new E.Contract(A.chips,CHIPS,signer);
+    if((await c.balanceOf(me))<amt){ why.textContent="Not enough Chips on hand."; why.className="why err"; return; }
+    if((await c.allowance(me,A.ballast))<amt) await tx(()=>c.approve(A.ballast,E.parseUnits("100000000",6)),"Approve");
+    await tx(()=>new E.Contract(A.ballast,BAL2,signer).deposit(amt,me),"Deposit "+raw);
+  };
+  const wd=$("btnWd"); if(wd) wd.onclick=async()=>{
+    if(guard()) return;
+    const raw=($("lpWd").value||"").trim(); if(!raw){why.textContent="Enter an amount.";why.className="why err";return;}
+    const amt=E.parseUnits(raw,6);
+    if(amt>lpMax){ why.textContent="Only "+n2(lpMax,6)+" CHIP is free right now."; why.className="why err"; return; }
+    await tx(()=>new E.Contract(A.ballast,BAL2,signer).withdraw(amt,me,me),"Withdraw "+raw);
+  };
+  const all=$("btnWdAll"); if(all) all.onclick=async()=>{
+    if(guard()) return;
+    const b=new E.Contract(A.ballast,BAL2,signer);
+    const sh=await b.maxRedeem(me);
+    if(sh===0n){ why.textContent="Nothing withdrawable right now."; why.className="why err"; return; }
+    // Redeem by shares so the last exit cannot strand dust.
+    await tx(()=>b.redeem(sh,me,me),"Withdraw everything available");
+  };
+}
+
+/* ── admin ────────────────────────────────────────────────────────── */
+function paintAdmin(){
+  $("aAddrs").innerHTML=[["Price engine",A.engine],["Pool",A.ballast],
+    ["Desk",A.floorplan],["Collateral",A.chips]]
+    .map(([n,a])=>`<div class="kvrow"><span>${n}</span>
+      <b><a href="${SCAN}/address/${a}" target="_blank" rel="noopener" style="color:var(--sky)">${short(a)}</a></b></div>`).join("");
+  $("ownerOnly").hidden = !isOwner;
+}
+
+(function wireAdmin(){
+  const why=()=>$("whyAdmin");
+  const tx=async(fn,label,w)=>{
+    const n=w||why();
+    try{ n.textContent="Waiting for signature…"; n.className="why";
+      const t=await fn(); await t.wait(); n.textContent=label+" confirmed."; n.className="why ok"; refresh();
+    }catch(e){ n.textContent=e.shortMessage||e.message; n.className="why err"; }
+  };
+  $("aMint").onclick=()=>signer?tx(()=>new E.Contract(A.chips,CHIPS,signer).faucet(),"Mint 100,000",$("whyMint"))
+    :($("whyMint").textContent="Connect a wallet first.",$("whyMint").className="why err");
+  $("aMint5").onclick=()=>signer?tx(()=>new E.Contract(A.chips,CHIPS,signer).mint(me,E.parseUnits("500000",6)),"Mint 500,000",$("whyMint"))
+    :($("whyMint").textContent="Connect a wallet first.",$("whyMint").className="why err");
+  $("aSetPusher").onclick=()=>{
+    if(!signer) return;
+    const a=($("aPusher").value||"").trim();
+    if(!E.isAddress(a)){ why().textContent="Not a valid address."; why().className="why err"; return; }
+    tx(()=>new E.Contract(A.engine,ENG2,signer).setPusher(a,true),"Authorise pusher");
+  };
+  $("aForce").onclick=()=>{
+    if(!signer) return;
+    const id=Number($("aFpId").value||0), px=($("aFpPx").value||"").trim();
+    if(!id||!px){ why().textContent="Market id and price are both required."; why().className="why err"; return; }
+    tx(()=>new E.Contract(A.engine,ENG2,signer).forcePush(id,E.parseUnits(px,18)),"Force push market "+id);
+  };
+})();
+
+/* Everything the portfolio and admin views need, read on the same cycle as
+   the trading view. One read, three panels — the whole reason for merging
+   the pages. */
+async function paintSide(p){
+  try{
+    if(me){
+      const c=new E.Contract(A.chips,CHIPS,p);
+      $("aChip").textContent=n2(await c.balanceOf(me),6)+" CHIP";
+      const b=new E.Contract(A.ballast,BAL2,p);
+      lpShares=await b.balanceOf(me);
+      lpValue =lpShares>0n?await b.convertToAssets(lpShares):0n;
+      lpMax   =await b.maxWithdraw(me);
+      const en=new E.Contract(A.engine,ENG2,p);
+      const o=await en.owner();
+      isOwner=o.toLowerCase()===me.toLowerCase();
+      $("aOwner").textContent=isOwner?"you":short(o);
+      const cfg=await en.markets(1);
+      const f=Number(cfg.fundingFactor);
+      $("aFund").textContent=(f/1e6*100).toFixed(4)+"%/hr · "+(f/1e6*100*24).toFixed(2)+"%/day";
+    }
+  }catch(e){}
+  paintAdmin(); paintFStats(); paintLp();
+}
 
 /* ── boot ─────────────────────────────────────────────────────────── */
 loadDraws();
@@ -1296,6 +1690,9 @@ $("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; drawChart(); };
 $("btnRpc").onclick = nextRpc;
 $("rpcN").textContent = String(rpcIdx+1);
 paintMkts(); connect(false); refresh();
+// History is detached from the refresh cycle on purpose: it is slow, it can
+// hang, and nothing else should wait on it.
+setTimeout(()=>loadHistory(), 1200);
 // Prices update every 30s at most, so polling faster only burns request
 // budget on an endpoint that will start refusing.
 setInterval(refresh, 30000);

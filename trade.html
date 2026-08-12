@@ -1740,14 +1740,26 @@ async function loadHistory(){
     // the deposit query never ran at all, and the panel reported no deposits
     // when it had simply never asked. A query that works should not be lost
     // because an unrelated one failed.
+    let limited=false;
     const one=async(addr,sig)=>{
       try{ return await scanSmart(p,addr,[E.id(sig),null,pad],latest); }
-      catch(e){ log("log read failed ("+sig.split("(")[0]+"): "+(e.shortMessage||e.message)); return []; }
+      catch(e){
+        if(e instanceof RateLimited){ limited=true; return []; }
+        log("log read failed ("+sig.split("(")[0]+"): "+(e.shortMessage||e.message));
+        return [];
+      }
     };
-    const op = await one(A.floorplan,"Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)");
-    const cl = await one(A.floorplan,"Closed(uint256,address,uint256,int256,int256,uint256,uint256)");
+    // Deposits first. They are the cheapest to find, they are what the LP
+    // panel needs, and if the endpoint is going to rate limit us it should
+    // happen after the most useful read rather than before it. Trade history
+    // is nice to have; a depositor being told they never deposited is not.
     const dp = await one(A.ballast,  "Deposit(address,address,uint256,uint256)");
     const wd = await one(A.ballast,  "Withdraw(address,address,address,uint256,uint256)");
+    const cl = limited ? [] : await one(A.floorplan,"Closed(uint256,address,uint256,int256,int256,uint256,uint256)");
+    // Opened is only needed to price the closes. With none, skip it entirely
+    // rather than walking a week of blocks to join against an empty set.
+    const op = (limited || !cl.length) ? []
+      : await one(A.floorplan,"Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)");
 
     const opens=new Map();
     for(const l of op){ try{ const d=iF.parseLog(l);
@@ -1768,11 +1780,22 @@ async function loadHistory(){
     lpIn=0n; lpOut=0n;
     for(const l of dp){ try{ lpIn  += iB.parseLog(l).args[2]; }catch{} }
     for(const l of wd){ try{ lpOut += iB.parseLog(l).args[3]; }catch{} }
-    lpHistRead=true;
+    // Only claim the history was read if it actually was. A rate-limited pass
+    // returns nothing, and reporting that as a completed read is how the
+    // panel came to say a funded wallet had made no deposits.
+    lpHistRead = !limited;
     if(dp.length) log("found "+dp.length+" deposit(s), "+wd.length+" withdrawal(s)");
+    if(limited){
+      histNote="Rate limited — retrying in a moment.";
+      // Try again once the window has passed rather than waiting for the
+      // user to reload.
+      histLoaded=false;
+      setTimeout(()=>loadHistory(), 20000);
+    }
 
-    histLoaded=true;
-    histNote = out.length ? "" : "No closed trades on this desk yet.";
+    histLoaded = !limited;
+    histNote = limited ? "Rate limited — retrying in a moment."
+             : out.length ? "" : "No closed trades on this desk yet.";
   }catch(e){
     histNote = "Could not read history: "+(e.shortMessage||e.message);
   }
@@ -1855,12 +1878,11 @@ async function scanSmart(p,address,topics,latest){
       if(hit.length) return hit;
     }catch(e){
       if(e instanceof RateLimited){
-        // Backing off beats trying the next endpoint: the limit is usually
-        // per-IP across the pool, so hammering the alternatives just spreads
-        // the same problem around.
-        log("rate limited reading logs — backing off");
-        emptyFor.set(key, Date.now());
-        return [];
+        // Back off, but do not record this as empty. "The endpoint refused"
+        // and "there is nothing there" are different answers, and caching
+        // the first as the second hides a real deposit for two minutes.
+        log("rate limited reading logs — will retry shortly");
+        throw e;
       }
     }
   }
@@ -1944,7 +1966,8 @@ function paintFStats(){
       <span class="v ${put>0?((val-put)>=0?"ok":"bad"):""}">${
         lpShares===0n?"—":put>0?sgn(val-put):"unknown"}</span>
       <span class="s">${put>0?money(put,2)+" deposited"
-        : !lpHistRead ? "reading deposit history…" : "no deposits found"}</span></div>`;
+        : histRunning ? "reading deposit history…"
+        : !lpHistRead ? "rate limited — retrying" : "no deposits found"}</span></div>`;
 }
 
 function paintClosed(){
@@ -2006,7 +2029,8 @@ function paintLp(){
     <div class="kvrow"><span>Your position is worth</span><b>${money(val,2)} CHIP · ${share.toFixed(1)}% of the pool</b></div>
     <div class="kvrow"><span>You put in</span><b>${
       put>0 ? money(put,2)+" CHIP"
-      : !lpHistRead ? "<span style='color:var(--mute)'>reading deposit history…</span>"
+      : histRunning ? "<span style='color:var(--mute)'>reading deposit history…</span>"
+      : !lpHistRead ? "<span style='color:var(--amber)'>rate limited — retrying</span>"
       : "<span style='color:var(--amber)'>no deposits found in the readable range</span>"}</b></div>
     <div class="kvrow"><span>Earned as the house</span><b class="${put>0?((val-put)>=0?"ok":"bad"):""}">${
       put>0 ? sgn(val-put)+" CHIP"

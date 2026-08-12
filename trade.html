@@ -1631,8 +1631,9 @@ async function send(fn,label){
     note("Waiting for signature…","");
     const tx=await fn(); note("Submitted…",""); log(label+" submitted",tx.hash);
     await tx.wait(); note(label+" confirmed.","ok"); log(label+" confirmed",tx.hash);
-    // Anything that settles writes an event the history depends on.
-    histLoaded=false;
+    // Anything that settles writes an event the history depends on, so the
+    // remembered "nothing here" has to go with it.
+    histLoaded=false; emptyFor.clear();
     await refresh();
     loadHistory();
   }catch(e){const m=e.shortMessage||e.reason||e.message||"failed";note(m,"err");log(label+" failed: "+m);}
@@ -1791,6 +1792,18 @@ async function loadHistory(){
  * in a handful of requests, and a deep one only if the shallow pass came back
  * empty. Most of the time the second pass never runs.
  */
+/* Thrown when the endpoint says 429. Splitting the range does not help with
+   a rate limit — it makes it worse, because each retry is another request —
+   so this unwinds the whole walk rather than being caught and halved. */
+class RateLimited extends Error {}
+
+function isRateLimit(e){
+  const m=(e?.shortMessage||e?.message||"")+JSON.stringify(e?.info||{});
+  return /429|too many requests|rate.?limit/i.test(m);
+}
+
+const nap = ms => new Promise(r=>setTimeout(r,ms));
+
 async function scan(p,address,topics,latest,back=1200000,budget=400){
   const out=[]; const floor=Math.max(0,latest-back);
   let from=latest, span=5000, tries=0, refusals=0;
@@ -1800,9 +1813,13 @@ async function scan(p,address,topics,latest,back=1200000,budget=400){
       out.push(...await p.getLogs({address,topics,fromBlock:lo,toBlock:from}));
       from=lo-1; tries++;
       if(span<5000) span=Math.min(5000,Math.floor(span*1.6));
+      // A short breath between chunks. Walking flat out is what earns the
+      // 429 in the first place.
+      if(from>floor) await nap(120);
     }catch(e){
+      if(isRateLimit(e)) throw new RateLimited("rate limited");
       refusals++;
-      if(span>250 && refusals<40){ span=Math.floor(span/2); continue; }
+      if(span>250 && refusals<40){ span=Math.floor(span/2); await nap(250); continue; }
       break;
     }
   }
@@ -1821,13 +1838,31 @@ async function scan(p,address,topics,latest,back=1200000,budget=400){
  * So: keep every query narrow, and if this endpoint will not serve it, ask
  * the next one before giving up.
  */
+const emptyFor=new Map();     // key -> when we last confirmed nothing is there
+
 async function scanSmart(p,address,topics,latest){
+  // A wallet with no history used to cost dozens of requests to establish
+  // that — three widening windows, then three other endpoints — and then do
+  // it all again on the next load. Remember the empty answer for a while.
+  const key=address+"|"+topics.join(",");
+  const seen=emptyFor.get(key);
+  if(seen && Date.now()-seen < 120000) return [];
+
   const windows=[15000, 60000, 200000];
   for(const w of windows){
     try{
       const hit=await scan(p,address,topics,latest,w,Math.ceil(w/5000)+2);
       if(hit.length) return hit;
-    }catch(e){}
+    }catch(e){
+      if(e instanceof RateLimited){
+        // Backing off beats trying the next endpoint: the limit is usually
+        // per-IP across the pool, so hammering the alternatives just spreads
+        // the same problem around.
+        log("rate limited reading logs — backing off");
+        emptyFor.set(key, Date.now());
+        return [];
+      }
+    }
   }
   // Nothing here. Another endpoint may serve what this one refused.
   // These are throwaway providers used only for this query. Their failures
@@ -1840,9 +1875,11 @@ async function scanSmart(p,address,topics,latest){
     try{
       const hit=await scan(alt,address,topics,latest,60000,14);
       if(hit.length){ log("logs came from RPC "+(((rpcIdx+i)%RPCS.length)+1)); return hit; }
-    }catch(e){}
+    }catch(e){ if(e instanceof RateLimited) break; }
     finally{ alt.destroy?.(); }
+    await nap(300);
   }
+  emptyFor.set(key, Date.now());
   return [];
 }
 
@@ -2004,7 +2041,7 @@ function wireLp(){
       // The scan latches once it succeeds, so without clearing this a deposit
       // made after the first load would never be seen and the panel would go
       // on reporting an empty deposit history.
-      histLoaded=false; lpHistRead=false;
+      histLoaded=false; lpHistRead=false; emptyFor.clear();
       await refresh(); await loadHistory();
     }catch(e){ why.textContent=e.shortMessage||e.message; why.className="why err"; }
   };

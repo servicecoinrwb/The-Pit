@@ -150,20 +150,26 @@ tr.danger td{background:rgba(181,81,47,.11)}
 .mini{background:transparent;border:1px solid var(--edge);color:var(--sky);
       padding:5px 10px;font-size:11px;cursor:pointer;border-radius:2px;letter-spacing:.05em}
 .mini:hover{border-color:var(--sky)}
-.mgr{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+/* The drawer lives inside a <td>, which inherits white-space:nowrap from
+   the table rule — so its paragraphs rendered as single unwrapped lines and
+   overlapped each other. Everything inside it wraps normally. */
+.mgrcell{white-space:normal!important;background:var(--ink);padding:16px 14px!important}
+.mgr{display:grid;grid-template-columns:1fr 1fr;gap:28px;white-space:normal}
 .mgrcol{min-width:0}
 .mgrhead{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
-         letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin-bottom:6px}
-.mgrnote{font-size:11.5px;color:var(--mute);line-height:1.6;margin-bottom:10px}
+         letter-spacing:.1em;text-transform:uppercase;color:var(--paper);margin-bottom:8px;
+         padding-bottom:6px;border-bottom:1px solid var(--edge)}
+.mgrnote{font-size:11.5px;color:var(--mute);line-height:1.65;margin-bottom:12px;
+         white-space:normal;max-width:52ch}
 .mgrnote b{color:var(--paper);font-weight:500}
-.mgrrow{display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end}
+.mgrrow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;white-space:normal}
 .mgrrow label{display:block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
               color:var(--mute);margin:0}
 .mgrrow input{width:150px;margin-top:4px;background:var(--slab);color:var(--paper);
               border:1px solid var(--edge);border-radius:2px;padding:8px 10px;font:13px "IBM Plex Mono",monospace}
 .mgrrow input:focus{outline:none;border-color:var(--sky)}
 .mgr .why{font-size:11.5px;margin-top:8px}
-@media (max-width:820px){ .mgr{grid-template-columns:1fr} }
+@media (max-width:1000px){ .mgr{grid-template-columns:1fr;gap:22px} }
 .none{padding:34px 16px;text-align:center;color:var(--mute);font-size:12.5px;line-height:1.7}
 .wrapscroll{overflow-x:auto}
 #log{padding:10px 14px;font-size:11.5px;color:var(--mute);max-height:170px;overflow:auto}
@@ -912,7 +918,7 @@ function mgrDrawer(id, q, mark, d){
   const tpVal = d.tp ?? (q.takeProfit===0n ? "" : E.formatUnits(q.takeProfit,18));
   const pcts = [25,50,75].map(pc=>'<button class="mini" data-pct="'+id+':'+pc+'">'+pc+'%</button>').join("");
 
-  return '<tr><td colspan="10" style="background:var(--ink);padding:14px 12px">'
+  return '<tr><td colspan="10" class="mgrcell">'
     + '<div class="mgr">'
     +   '<div class="mgrcol">'
     +     '<div class="mgrhead">Stop loss and take profit</div>'

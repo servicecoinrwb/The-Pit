@@ -310,7 +310,8 @@ tr.danger td{background:rgba(181,81,47,.11)}
       <div class="kv"><span class="k">Leverage</span><span class="v" id="qLev">—</span></div>
       <div class="kv"><span class="k">Liquidation</span><span class="v" id="qLiq">—</span></div>
       <div class="kv"><span class="k">Open fee</span><span class="v" id="qFee">—</span></div>
-      <div class="kv"><span class="k">Max profit</span><span class="v" id="qCap">—</span></div>
+      <div class="kv"><span class="k">Profit stops at</span><span class="v" id="qCap">—</span></div>
+      <div class="kv"><span class="k">Price move to reach it</span><span class="v" id="qCapMove">—</span></div>
     </div>
 
     <button class="go" id="btnGo">Open long</button>
@@ -1154,7 +1155,23 @@ function quote(){
 
   $("qEntry").textContent = p?"$"+money(p):"no price";
   $("qFee").textContent   = fee?money(fee)+" CHIP":"—";
-  $("qCap").textContent   = size?money(size*0.5)+" CHIP":"—";
+  // The cap is half of SIZE, so it never moves with margin — which reads as
+  // an enormous number sitting next to a small stake. Against the margin
+  // actually at risk it says the useful thing: how far this trade can run
+  // before it stops paying.
+  if(size && net>0){
+    const cap=size*0.5;
+    $("qCap").textContent = money(cap)+" CHIP · "+(cap/net).toFixed(1)+"x your margin";
+  } else $("qCap").textContent = "—";
+
+  // Half of size, expressed as the move that gets you there — a 50x position
+  // hits the cap on a 1% move, which is worth knowing before opening it
+  // rather than discovering when the position quietly stops earning.
+  if(p && size && net>0){
+    const movePct = 50 / (size/net);
+    const target = side==="long" ? p*(1+movePct/100) : p*(1-movePct/100);
+    $("qCapMove").textContent = movePct.toFixed(2)+"% · $"+money(target);
+  } else $("qCapMove").textContent = "—";
   $("qLev").textContent   = net>0?lev.toFixed(1)+"x / "+meta.lev+"x max":"—";
   $("qLev").className     = "v "+(lev>meta.lev?"bad":"");
 

@@ -1727,10 +1727,19 @@ async function loadHistory(){
 
     // Sequential, not parallel. Five concurrent walks against one endpoint is
     // how the requests got refused in the first place.
-    const op = await scanSmart(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest);
-    const cl = await scanSmart(p,A.floorplan,[E.id("Closed(uint256,address,uint256,int256,int256,uint256,uint256)"),null,pad],latest);
-    const dp = await scanSmart(p,A.ballast,[E.id("Deposit(address,address,uint256,uint256)"),null,pad],latest);
-    const wd = await scanSmart(p,A.ballast,[E.id("Withdraw(address,address,address,uint256,uint256)"),null,pad],latest);
+    // Four separate reads, each in its own guard. They used to share one try
+    // block and run in order, so the first scan to throw aborted the rest —
+    // the deposit query never ran at all, and the panel reported no deposits
+    // when it had simply never asked. A query that works should not be lost
+    // because an unrelated one failed.
+    const one=async(addr,sig)=>{
+      try{ return await scanSmart(p,addr,[E.id(sig),null,pad],latest); }
+      catch(e){ log("log read failed ("+sig.split("(")[0]+"): "+(e.shortMessage||e.message)); return []; }
+    };
+    const op = await one(A.floorplan,"Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)");
+    const cl = await one(A.floorplan,"Closed(uint256,address,uint256,int256,int256,uint256,uint256)");
+    const dp = await one(A.ballast,  "Deposit(address,address,uint256,uint256)");
+    const wd = await one(A.ballast,  "Withdraw(address,address,address,uint256,uint256)");
 
     const opens=new Map();
     for(const l of op){ try{ const d=iF.parseLog(l);
@@ -1752,6 +1761,7 @@ async function loadHistory(){
     for(const l of dp){ try{ lpIn  += iB.parseLog(l).args[2]; }catch{} }
     for(const l of wd){ try{ lpOut += iB.parseLog(l).args[3]; }catch{} }
     lpHistRead=true;
+    if(dp.length) log("found "+dp.length+" deposit(s), "+wd.length+" withdrawal(s)");
 
     histLoaded=true;
     histNote = out.length ? "" : "No closed trades on this desk yet.";
@@ -1792,11 +1802,36 @@ async function scan(p,address,topics,latest,back=1200000,budget=400){
   return out;
 }
 
-/** Recent first — a deposit made minutes ago needs three requests, not 240. */
+/**
+ * Recent first, and across endpoints.
+ *
+ * Two things the probe established. Endpoints refuse log queries by how broad
+ * they are rather than by block range — an owner-filtered query over 15,000
+ * blocks came back with a result while the same filter over 200,000, and an
+ * unfiltered one over 5,000, were both refused. And they disagree: the query
+ * one endpoint answered, another rejected outright.
+ *
+ * So: keep every query narrow, and if this endpoint will not serve it, ask
+ * the next one before giving up.
+ */
 async function scanSmart(p,address,topics,latest){
-  const shallow = await scan(p,address,topics,latest,15000,8);
-  if(shallow.length) return shallow;
-  return scan(p,address,topics,latest,1200000,400);
+  const windows=[15000, 60000, 200000];
+  for(const w of windows){
+    try{
+      const hit=await scan(p,address,topics,latest,w,Math.ceil(w/5000)+2);
+      if(hit.length) return hit;
+    }catch(e){}
+  }
+  // Nothing here. Another endpoint may serve what this one refused.
+  for(let i=1;i<RPCS.length;i++){
+    const alt=new E.JsonRpcProvider(RPCS[(rpcIdx+i)%RPCS.length], CHAIN,
+      {staticNetwork:true, batchMaxCount:12});
+    try{
+      const hit=await scan(alt,address,topics,latest,60000,14);
+      if(hit.length){ log("logs came from RPC "+(((rpcIdx+i)%RPCS.length)+1)); return hit; }
+    }catch(e){}
+  }
+  return [];
 }
 
 /* Report what the node actually returns rather than inferring it.

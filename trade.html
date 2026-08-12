@@ -9,8 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#0a1420; --slab:#101d2e; --panel:#16263f; --edge:#22364f; 
-  --paper:#f5efe3; --mute:#8ba3bd; --dim:#5d7f9a;     
+  --ink:#0a1420; --slab:#101d2e; --panel:#16263f; --edge:#22364f;
+  --paper:#f5efe3; --mute:#8ba3bd; --dim:#5d7f9a;
   --sky:#6fb7e3; --jade:#5fa88a; --rust:#b5512f; --amber:#d9a441;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1377,9 +1377,13 @@ document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{
   view=b.dataset.view;
   document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("on",x.dataset.view===view));
   document.querySelectorAll("[data-panel]").forEach(x=>x.classList.toggle("on",x.dataset.panel===view));
-  if(view==="trade") drawChart();
-  if(view==="folio"){ drawCurve(); loadHistory(); }
-  paint();
+  // Repaint whatever the new view needs from state already in hand, then
+  // refresh in the background. Switching views should never wait on the
+  // chain — the data is usually already here.
+  if(view==="trade"){ paintMkts(); drawChart(); }
+  if(view==="folio"){ paintFStats(); paintClosed(); paintLp(); drawCurve(); loadHistory(); }
+  if(view==="admin"){ paintAdmin(); }
+  refresh();
 });
 document.querySelectorAll("[data-ftab]").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("[data-ftab]").forEach(x=>x.classList.toggle("on",x===b));
@@ -1609,6 +1613,20 @@ function wireLp(){
 }
 
 /* ── admin ────────────────────────────────────────────────────────── */
+async function checkOwner(p){
+  if(!me){ isOwner=false; $("ownerOnly").hidden=true; return; }
+  try{
+    const o=await new E.Contract(A.engine,ENG2,p).owner();
+    isOwner = o.toLowerCase()===me.toLowerCase();
+    $("aOwner").textContent = isOwner ? "you" : short(o);
+  }catch(e){
+    // An unreadable owner is not the same as not being the owner. Keep the
+    // last known answer rather than hiding the panel on a flaky read.
+    $("aOwner").textContent = "could not read";
+  }
+  $("ownerOnly").hidden = !isOwner;
+}
+
 function paintAdmin(){
   $("aAddrs").innerHTML=[["Price engine",A.engine],["Pool",A.ballast],
     ["Desk",A.floorplan],["Collateral",A.chips]]
@@ -1656,15 +1674,13 @@ async function paintSide(p){
       lpValue =lpShares>0n?await b.convertToAssets(lpShares):0n;
       lpMax   =await b.maxWithdraw(me);
       const en=new E.Contract(A.engine,ENG2,p);
-      const o=await en.owner();
-      isOwner=o.toLowerCase()===me.toLowerCase();
-      $("aOwner").textContent=isOwner?"you":short(o);
       const cfg=await en.markets(1);
       const f=Number(cfg.fundingFactor);
       $("aFund").textContent=(f/1e6*100).toFixed(4)+"%/hr · "+(f/1e6*100*24).toFixed(2)+"%/day";
     }
   }catch(e){}
-  paintAdmin(); paintFStats(); paintLp();
+  await checkOwner(p);
+  paintAdmin(); paintFStats(); paintClosed(); paintLp();
 }
 
 /* ── boot ─────────────────────────────────────────────────────────── */
@@ -1725,7 +1741,7 @@ $("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; drawChart(); };
 
 $("btnRpc").onclick = nextRpc;
 $("rpcN").textContent = String(rpcIdx+1);
-paintMkts(); connect(false); refresh();
+paintMkts(); paintAdmin(); paintFStats(); paintLp(); connect(false); refresh();
 // History is detached from the refresh cycle on purpose: it is slow, it can
 // hang, and nothing else should wait on it.
 setTimeout(()=>loadHistory(), 1200);

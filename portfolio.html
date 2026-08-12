@@ -195,17 +195,39 @@ const iBal=new E.Interface([
  "event Deposit(address indexed sender,address indexed owner,uint256 assets,uint256 shares)",
  "event Withdraw(address indexed sender,address indexed receiver,address indexed owner,uint256 assets,uint256 shares)"]);
 
-/** Walks back in chunks, halving on refusal rather than abandoning the walk. */
-async function scan(p, address, topics, latest, back=120000){
-  const out=[]; let from=latest, span=5000, guard=0;
+/**
+ * Walks back through logs in chunks.
+ *
+ * Arc produces a block roughly every half second — about 172,800 a day — so
+ * a window measured in blocks is far shorter than it looks. The earlier
+ * version compounded that: a refused range halved the span permanently and
+ * still consumed an iteration, so after a few refusals it was crawling in
+ * 500-block steps and hit its own guard having covered under three hours.
+ *
+ * Now the span recovers after a success, refusals do not count against the
+ * iteration budget, and the budget is generous enough to actually reach the
+ * far end of the window.
+ */
+async function scan(p, address, topics, latest, back=600000){
+  const out=[];
   const floor=Math.max(0,latest-back);
-  while(from>floor && guard++<60){
+  let from=latest, span=5000, tries=0, refusals=0;
+
+  while(from>floor && tries<400){
     const lo=Math.max(floor,from-span);
     try{
       const logs=await p.getLogs({address,topics,fromBlock:lo,toBlock:from});
       out.push(...logs);
-    }catch(e){ if(span>500){span=Math.floor(span/2); continue;} break; }
-    from=lo-1;
+      from=lo-1;
+      tries++;
+      // Climb back up after a success, so one bad range does not cripple
+      // the rest of the walk.
+      if(span<5000) span=Math.min(5000, Math.floor(span*1.6));
+    }catch(e){
+      refusals++;
+      if(span>250 && refusals<40){ span=Math.floor(span/2); continue; }
+      break;                                  // genuinely cannot read further
+    }
   }
   return out;
 }
@@ -219,13 +241,15 @@ async function loadHistory(p){
   const pad=E.zeroPadValue(me,32);
   const latest=await p.getBlockNumber();
   // Overlap slightly on the resume so a boundary event is not missed.
-  const back = scannedTo ? Math.max(1000, latest-scannedTo+50) : 400000;
+    // A day of Arc is 172,800 blocks. A cold load reaching back a week needs
+  // to be measured accordingly rather than in what looks like a large number.
+  const back = scannedTo ? Math.max(1000, latest-scannedTo+50) : 1200000;
 
   // Opened must reach further back than Closed — a trade closed today may
   // have been opened long before the resume point, and without its Opened
   // event there is no way to know what went in.
   const [op,cl,lq,dp,wd]=await Promise.all([
-    scan(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest,400000),
+    scan(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest,1200000),
     scan(p,A.floorplan,[E.id("Closed(uint256,address,uint256,int256,int256,uint256,uint256)"),null,pad],latest,back),
     scan(p,A.floorplan,[E.id("Liquidated(uint256,address,address,uint256,uint256,uint256)"),null,pad],latest,back),
     scan(p,A.ballast,[E.id("Deposit(address,address,uint256,uint256)"),null,pad],latest,back),
@@ -357,8 +381,9 @@ function paintStats(){
       <span class="v">${lp.shares>0n?money(lpVal):"—"}</span>
       <span class="s">${lp.shares>0n?money(lpIn)+" deposited":"not a depositor"}</span></div>
     <div class="stat"><span class="k">LP return</span>
-      <span class="v ${lpRet>=0?"ok":"bad"}">${lp.shares>0n?sgn(lpRet):"—"}</span>
-      <span class="s">fees earned as the house</span></div>`;
+      <span class="v ${lpIn>0?(lpRet>=0?"ok":"bad"):""}">${
+        lp.shares===0n ? "—" : lpIn>0 ? sgn(lpRet) : "unknown"}</span>
+      <span class="s">${lpIn>0 ? "fees earned as the house" : "deposit history not readable"}</span></div>`;
 }
 
 /* ── tables ───────────────────────────────────────────────────────── */
@@ -422,9 +447,11 @@ function paintLp(){
     <div style="padding:14px 12px;border-top:1px solid var(--edge)">
       ${isLp ? `<table style="margin-bottom:12px"><tbody>
         <tr><td>Your position is worth</td><td>${money(val)} CHIP · ${share.toFixed(1)}% of the pool</td></tr>
-        <tr><td>You put in</td><td>${money(inn)} CHIP</td></tr>
+        <tr><td>You put in</td><td>${inn>0 ? money(inn)+" CHIP" : "<span style=\'color:var(--amber)\'>deposits not found in the readable range</span>"}</td></tr>
         <tr><td>Earned as the house</td>
-            <td class="${ret>=0?"ok":"bad"}">${sgn(ret)} CHIP (${pct>=0?"+":""}${pct.toFixed(4)}%)</td></tr>
+            <td class="${inn>0 ? (ret>=0?"ok":"bad") : ""}">${
+              inn>0 ? sgn(ret)+" CHIP ("+(pct>=0?"+":"")+pct.toFixed(4)+"%)"
+                    : "<span style=\'color:var(--mute)\'>needs the deposit history to compute</span>"}</td></tr>
         <tr><td>Withdrawable right now</td><td>${money(canOut)} CHIP</td></tr>
       </tbody></table>`
       : '<p style="color:var(--mute);font-size:12.5px;margin-bottom:12px">'

@@ -136,6 +136,12 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
   <div class="sub"><a href="trade.html" style="color:var(--sky)">&larr; trading</a> · <a href="portfolio.html" style="color:var(--sky)">portfolio</a> · one-time bring-up, collateral minting, and owner calls</div>
   <div class="net"><span class="dot" id="netdot"></span><span id="netlabel">Not connected</span></div>
   <div id="roleNote" class="sub" style="margin-top:9px;color:var(--amber)"></div>
+  <div class="sub" style="margin-top:7px">
+    <button id="btnRpc" style="background:transparent;border:1px solid var(--edge);color:var(--sky);
+      border-radius:2px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer">
+      RPC <span id="rpcN"></span> — switch</button>
+    <span id="rpcWarn" style="color:var(--amber);font-size:12px;margin-left:8px"></span>
+  </div>
 </header>
 
 <!-- live market strip -->
@@ -331,11 +337,13 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
         depositors who disagree have time to withdraw first. It also refuses while capital is reserved against
         open positions, because the incoming engine knows nothing about them and could never release them.</div>
       <div class="act">
-        <input id="newPerp" placeholder="new Floorplan address">
-        <button id="btnPropose" class="ghost">Propose</button>
-        <button id="btnExecPerp">Execute</button>
+        <input id="newPerp" placeholder="Floorplan address">
+        <button id="btnSetPerp">Set engine</button>
+        <button id="btnPropose" class="ghost">Propose change</button>
+        <button id="btnExecPerp" class="ghost">Execute</button>
         <button id="btnCancelPerp" class="ghost">Cancel</button>
       </div>
+      <div class="hint" id="perpHint" style="margin-top:7px"></div>
       <div class="why" id="why12"></div>
     </div>
 
@@ -409,6 +417,7 @@ const BALLAST = [
   "function perp() view returns (address)",
   "function proposedPerp() view returns (address)",
   "function perpEta() view returns (uint256)",
+  "function setPerp(address)",
   "function proposePerp(address)",
   "function cancelPerpProposal()",
   "function executePerp()",
@@ -486,6 +495,7 @@ function readProvider(){
   const idx = Number(localStorage.getItem("pit.rpc") || 0) % RPCS.length;
   read = new E.JsonRpcProvider(RPCS[idx], CHAIN,
     { staticNetwork:true, batchMaxCount:12, batchStallTime:40 });
+  const n = document.getElementById("rpcN"); if (n) n.textContent = String(idx+1);
   return read;
 }
 const C = {
@@ -538,7 +548,15 @@ async function refresh(){
       const cur = await b.perp();
       const prop = await b.proposedPerp();
       const eta = Number(await b.perpEta());
-      $("curPerp").textContent = cur === E.ZeroAddress ? "not set" : short(cur);
+      const unset = cur === E.ZeroAddress;
+      $("curPerp").textContent = unset ? "not set" : short(cur);
+      $("curPerp").className = "v " + (unset ? "warn" : "ok");
+      $("btnSetPerp").disabled  = !unset;
+      $("btnPropose").disabled  =  unset;
+      $("btnExecPerp").disabled =  unset;
+      $("perpHint").textContent = unset
+        ? "No engine attached yet, so Set engine applies and takes effect immediately — there is nothing to protect until a desk can move money. Once set, changes go through the 48-hour delay instead."
+        : "An engine is attached, so changes go through Propose, a 48-hour wait, then Execute.";
       if (prop === E.ZeroAddress){
         $("propPerp").textContent = "none";
         $("perpEta").textContent = "—";
@@ -633,18 +651,31 @@ async function refresh(){
      stay hidden until ownership is confirmed, so a failed read hides them
      rather than revealing them. */
   if (me){
-    let isO = false;
+    // Three states, not two. An unreadable owner is not the same as not
+    // being the owner, and hiding the panels either way makes an RPC fault
+    // look like a permissions problem — which sent a real debugging session
+    // down the wrong path.
+    let isO = null;
     try {
       const o = await C.engine(p).owner();
       isO = o.toLowerCase() === me.toLowerCase();
-    } catch(e){}
-    ["secSeed","secEngine","secAdmin"].forEach(id=>{ const n=$(id); if(n) n.hidden = !isO; });
-    $("isOwner").textContent = isO ? "yes" : "no";
-    $("isOwner").className = "v " + (isO ? "ok" : "warn");
-    $("roleNote").textContent = isO
-      ? ""
-      : "Owner-only panels are hidden. You can mint test collateral and deposit into the pool from here.";
-    $("pageTitle").innerHTML = isO ? 'Setup <span>&amp; admin</span>' : 'Your <span>account</span>';
+    } catch(e){ isO = null; }
+
+    // Once ownership is known it is remembered for the session, so a later
+    // read failure does not make the admin panels vanish mid-task.
+    if (isO === true) sessionStorage.setItem("pit.owner", me.toLowerCase());
+    const remembered = sessionStorage.getItem("pit.owner") === me.toLowerCase();
+    const show = isO === true || (isO === null && remembered);
+
+    ["secSeed","secEngine","secAdmin"].forEach(id=>{ const n=$(id); if(n) n.hidden = !show; });
+    $("isOwner").textContent = isO === null ? "could not read" : (isO ? "yes" : "no");
+    $("isOwner").className = "v " + (isO === null ? "bad" : (isO ? "ok" : "warn"));
+    $("roleNote").textContent =
+      isO === null
+        ? "The chain is not answering, so ownership could not be checked. That is an RPC problem rather than a permissions one — try the switch above."
+        : isO ? ""
+        : "Owner-only panels are hidden. You can mint test collateral and deposit into the pool from here.";
+    $("pageTitle").innerHTML = show ? 'Setup <span>&amp; admin</span>' : 'Your <span>account</span>';
   } else {
     ["secSeed","secEngine","secAdmin"].forEach(id=>{ const n=$(id); if(n) n.hidden = true; });
     $("roleNote").textContent = "Connect a wallet to see what you can do here.";
@@ -1113,6 +1144,17 @@ const PENDING = [
    and shift by an hour when daylight saving ends. */
 const FUT_SESSIONS = [[79200,162000],[165600,248400],[252000,334800],[338400,421200],[424800,507600]];
 
+/* The first wiring is immediate; only later changes are delayed. A vault
+   with no engine attached has nothing to protect yet — there are no
+   depositors whose money an incoming engine could move, because nothing can
+   move until one is set. */
+$("btnSetPerp").onclick = () => {
+  if (needWallet("why12")) return;
+  const a = ($("newPerp").value||"").trim();
+  if (!E.isAddress(a)){ say("why12","That is not a valid address.","err"); return; }
+  send(()=>C.ballast(signer).setPerp(a), "Set the pool's engine", "why12");
+};
+
 $("btnPropose").onclick = () => {
   if (needWallet("why12")) return;
   const a = ($("newPerp").value||"").trim();
@@ -1195,6 +1237,14 @@ $("aBallast").textContent = short(A.ballast);
 $("aEngine").textContent  = short(A.engine);
 $("aFloor").textContent   = short(A.floorplan);
 quote();
+document.getElementById("btnRpc").onclick = () => {
+  const next = (Number(localStorage.getItem("pit.rpc")||0) + 1) % RPCS.length;
+  localStorage.setItem("pit.rpc", String(next));
+  read = null; provider = null;
+  document.getElementById("rpcWarn").textContent = "switched — reloading";
+  location.reload();
+};
+
 connect(false);
 refresh();
 setInterval(refresh, 45000);

@@ -595,7 +595,7 @@ let span=110, offset=0, panFrom=null;
    the price axis sets a manual zoom that persists until you double-click it
    away, so a chart you deliberately stretched does not silently re-fit on
    the next refresh. */
-let vZoom=null, vDrag=null;
+let vZoom=null, vDrag=null, tDrag=null;
 const SPAN_MIN=20, SPAN_MAX=400;
 const series=Object.fromEntries(MKT.map(m=>[m.id,[]])), px={}, stat={}, mstate={};
 let loaded=false, pool=null, poolOwed=null, lastBlock=0, saveTick=0;
@@ -969,7 +969,12 @@ function drawChart(){
   // it is a transparent rect over that strip rather than a separate element
   // — anything laid on top of the SVG would swallow the pan gesture.
   const axisHit=`<rect x="${(W-PR).toFixed(1)}" y="0" width="${PR}" height="${H}"
-    fill="transparent" style="cursor:ns-resize" id="pxaxis"/>`;
+    fill="transparent" style="cursor:ns-resize" id="pxaxis"/>`
+  // The time axis is the mirror of the price one: the bottom strip, dragged
+  // sideways. Both are transparent rects inside the SVG rather than elements
+  // laid over it, because anything on top would swallow the pan gesture.
+  + `<rect x="${X0.toFixed(1)}" y="${(H-PB).toFixed(1)}" width="${(W-PR-X0).toFixed(1)}"
+      height="${PB}" fill="transparent" style="cursor:ew-resize" id="tmaxis"/>`;
   svg.insertAdjacentHTML("beforeend", axisHit);
   const ax=document.getElementById("pxaxis");
   if(ax){
@@ -979,6 +984,18 @@ function drawChart(){
       ev.stopPropagation(); ev.preventDefault();
     };
     ax.ondblclick=ev=>{ vZoom=null; ev.stopPropagation(); drawChart(); };
+  }
+
+  const tx=document.getElementById("tmaxis");
+  if(tx){
+    tx.onpointerdown=ev=>{
+      tDrag={x:ev.clientX, span};
+      tx.setPointerCapture?.(ev.pointerId);
+      ev.stopPropagation(); ev.preventDefault();
+    };
+    // Back to the default window rather than to everything — Fit already
+    // exists for that, and a double-click here means "undo my dragging".
+    tx.ondblclick=ev=>{ span=110; offset=0; ev.stopPropagation(); drawChart(); };
   }
 
   const local=ev=>{ const r=svg.getBoundingClientRect();
@@ -2159,7 +2176,15 @@ addEventListener("pointermove", ev=>{
   vZoom = Math.max(0.15, Math.min(8, vDrag.z * f));
   drawChart();
 });
-addEventListener("pointerup", ()=>{ vDrag=null; });
+addEventListener("pointermove", ev=>{
+  if(!tDrag) return;
+  // Dragging right spreads the candles, which means fewer of them in view —
+  // the same direction as pulling a time axis apart on any charting package.
+  const f = 1 - (ev.clientX - tDrag.x)/420;
+  span = Math.max(SPAN_MIN, Math.min(SPAN_MAX, Math.round(tDrag.span * f)));
+  drawChart();
+});
+addEventListener("pointerup", ()=>{ vDrag=null; tDrag=null; });
 
 /* ── ticket width, dragged and remembered ─────────────────────────── */
 const W_KEY="pit.tickw", W_MIN=240, W_MAX=560;

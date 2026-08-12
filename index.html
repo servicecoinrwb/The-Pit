@@ -170,7 +170,15 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
       </div>
       <div class="cell">
         <h3>Two sources must agree</h3>
-        <p>Every price is checked against a second exchange before it is published. When they disagree, nothing is published and the desk goes quiet.</p>
+        <p>ETH and BTC are checked against a second exchange before publishing. When they disagree, nothing is published and the desk goes quiet. Index futures have no free second source and say so.</p>
+      </div>
+      <div class="cell">
+        <h3>Open positions pay rent</h3>
+        <p>Funding nets to nothing on a balanced book and fees only arrive when someone trades. A borrow fee scaled to how much of the pool is committed is what pays for carrying risk in between.</p>
+      </div>
+      <div class="cell">
+        <h3>Something watches for liquidations</h3>
+        <p>Anyone can liquidate an underwater position, but a promise nobody enforces is not a promise. A keeper sweeps every forty-five seconds so the maintenance floor is a real floor.</p>
       </div>
     </div>
   </section>
@@ -188,16 +196,26 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
       <p>Closing needs a live price, because settling against a stale one robs whichever side the staleness favours. Margin can always be added, so a position can be defended through a closure even when it cannot be exited.</p>
     </div>
     <div class="cav">
-      <b>US30 is listed but not fed.</b>
-      <p>There is no trustworthy Dow index source wired up yet, and publishing a correlated proxy under that name would be a lie the desk settles on. The market stays shut until there is a feed worth trusting.</p>
+      <b>US30 runs on delayed, unchecked data.</b>
+      <p>It tracks YM futures from a single free source, typically ten to fifteen minutes behind. Nobody offers a second free Dow feed, so unlike ETH and BTC this price is published without being checked against anything. Anyone holding a real-time terminal knows where the Dow is before this desk does. Academic on a testnet; disqualifying anywhere real.</p>
     </div>
     <div class="cav">
-      <b>Three markets, not ten.</b>
-      <p>SPX, NAS, WTI, GOLD, SOL and XRP are next, and they are held back rather than
-      half-shipped: the current engine sums unrealised profit across exactly three markets, so a
-      position on a fourth would be invisible to the pool's own accounting and the vault would
-      report itself richer than it is. Listing them early would look like progress and quietly
-      break the number depositors rely on.</p>
+      <b>Three markets today, nine shortly.</b>
+      <p>SPX, NAS, WTI, GOLD, SOL and XRP are wired and waiting on their listing. The engine
+      behind them already handles any number of markets; the earlier one summed unrealised profit
+      across exactly three, so a position on a fourth would have been invisible to the pool's own
+      accounting. Listing them then would have looked like progress while quietly breaking the
+      number depositors rely on.</p>
+    </div>
+    <div class="cav">
+      <b>A position got permanently stuck, and that is why the contracts changed.</b>
+      <p>The first version counted the same reserved capital twice — once in the desk, once in
+      the pool — and payouts moved one without the other. Once they disagreed, closing reverted,
+      and because liquidation unwinds through the same path, the position could not be liquidated
+      either. A live trade hit it and its margin is still in the old contract. The pool is now the
+      only counter that decides anything, and every release and payout clamps to what it actually
+      holds rather than reverting. On a testnet this cost some worthless tokens. It is the kind of
+      thing that only surfaces when a real position lands on it.</p>
     </div>
     <div class="cav">
       <b>The money is not money.</b>

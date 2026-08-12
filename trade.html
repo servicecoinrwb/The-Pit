@@ -13,6 +13,15 @@
   --paper:#f5efe3; --mute:#8ba3bd; --dim:#5d7f9a;
   --sky:#6fb7e3; --jade:#5fa88a; --rust:#b5512f; --amber:#d9a441;
 }
+/* A paper theme, not an inverted dark one. The greens and reds are darkened
+   rather than reused — the same jade that reads clearly on near-black is
+   washed out on white, and a candle you cannot tell the colour of is worse
+   than no colour at all. */
+html.light{
+  --ink:#f7f4ee; --slab:#ffffff; --panel:#eee9df; --edge:#d6cec1;
+  --paper:#1a2230; --mute:#6a7482; --dim:#8d95a1;
+  --sky:#1d6fa8; --jade:#2f7d5c; --rust:#a8391b; --amber:#8a6512;
+}
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--ink);color:var(--paper);
@@ -31,7 +40,8 @@ button,select,input{font-family:inherit}
       text-decoration:none;display:inline-flex;align-items:center;gap:7px}
 .pill:hover{border-color:var(--sky);color:var(--paper)}
 .pill.view{background:transparent;cursor:pointer;font:inherit;font-size:12px}
-.pill.view.on{border-color:var(--sky);color:var(--paper);background:rgba(111,183,227,.10)}
+.pill.view.on{border-color:var(--sky);color:var(--sky);
+              background:color-mix(in srgb, var(--sky) 12%, transparent)}
 [data-panel]{display:none}
 [data-panel].on{display:block}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--rust);flex:none}
@@ -53,10 +63,10 @@ button,select,input{font-family:inherit}
 
 .rpcwarn{font-size:11px;color:var(--amber)}
 .pending{display:flex;align-items:baseline;gap:11px;padding:7px 16px;
-         border-bottom:1px solid var(--edge);flex-wrap:wrap;background:rgba(0,0,0,.15)}
+         border-bottom:1px solid var(--edge);flex-wrap:wrap;background:var(--panel)}
 .pending .pl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
-.pending .ps{font-size:12.5px;color:#5d7f9a;letter-spacing:.04em}
-.pending .pn{font-size:11px;color:#4d6b85}
+.pending .ps{font-size:12.5px;color:var(--dim);letter-spacing:.04em}
+.pending .pn{font-size:11px;color:var(--mute);opacity:.8}
 .stats{display:flex;gap:0;border-bottom:1px solid var(--edge);overflow-x:auto}
 .stat{padding:9px 16px;border-right:1px solid var(--edge);white-space:nowrap;flex:none}
 .stat .k{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);display:block}
@@ -84,10 +94,10 @@ button,select,input{font-family:inherit}
 .tools .tl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin-right:3px}
 .tools .sep{width:1px;height:18px;background:var(--edge);margin:0 7px}
 .drawhint{font-size:11px;color:var(--amber);margin-left:6px}
-.ma1{stroke:#d9a441} .ma2{stroke:#b07fd4} .bbl{stroke:var(--mute);opacity:.75}
+.ma1{stroke:#d9a441} .ma2{stroke:#8a5fc0} .bbl{stroke:var(--mute);opacity:.75}
 .ind{fill:none;stroke-width:1.3}
 .bbfill{fill:var(--sky);opacity:.05}
-.rsiln{fill:none;stroke:#b07fd4;stroke-width:1.3}
+.rsiln{fill:none;stroke:#8a5fc0;stroke-width:1.3}
 .rsig{stroke:var(--edge);stroke-width:.7;opacity:.6}
 .draw{stroke:var(--sky);stroke-width:1.2}
 .draw.h{stroke-dasharray:5 4}
@@ -157,7 +167,7 @@ table{width:100%;border-collapse:collapse;font-size:12.5px}
 th{text-align:left;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);
    padding:9px 12px;border-bottom:1px solid var(--edge);font-weight:400;white-space:nowrap}
 td{padding:11px 12px;border-bottom:1px solid var(--edge);font-variant-numeric:tabular-nums;white-space:nowrap}
-tr.danger td{background:rgba(181,81,47,.11)}
+tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
 .tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:10px;
      letter-spacing:.07em;padding:2px 6px;border-radius:2px;color:var(--ink)}
 .tag.long{background:var(--jade)} .tag.short{background:var(--rust);color:var(--paper)}
@@ -241,6 +251,7 @@ tr.danger td{background:rgba(181,81,47,.11)}
   <div class="brand"><a href="index.html">The <span>Pit</span></a></div>
   <div class="topright">
     <span class="rpcwarn" id="rpcWarn"></span>
+    <button class="pill" id="btnTheme" title="Light or dark">☾</button>
     <button class="pill" id="btnRpc" title="Switch price data endpoint">RPC <span id="rpcN"></span></button>
     <button class="pill view on" data-view="trade">Trade</button>
     <button class="pill view" data-view="folio">Portfolio</button>
@@ -565,8 +576,31 @@ function log(m,h){const d=document.createElement("div");
   d.innerHTML=`${new Date().toLocaleTimeString()} — ${m}`+(h?` <a href="${SCAN}/tx/${h}" target="_blank" rel="noopener">view</a>`:"");
   $("log").prepend(d);}
 function note(m,k){const n=$("note");n.textContent=m||"";n.className="note"+(k?" "+k:"");}
-const n2=(v,d,p=2)=>Number(E.formatUnits(v,d)).toLocaleString(undefined,{minimumFractionDigits:p,maximumFractionDigits:p});
-const money=v=>v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const n2=(v,d,p)=>{
+  const n=Number(E.formatUnits(v,d));
+  // Collateral amounts stay at two places; prices get precision by size.
+  const places = p!==undefined ? p : (d===18 ? dp(n) : 2);
+  return n.toLocaleString(undefined,{minimumFractionDigits:places,maximumFractionDigits:places});
+};
+/* Two decimals is right for BTC and useless for XRP — a market trading
+   around a dollar renders every price, every axis label and every entry as
+   the same "1.01", so a chart full of movement reads as a flat line. Places
+   scale with magnitude instead. */
+function dp(v){
+  const a=Math.abs(v);
+  if(a===0)     return 2;
+  if(a<0.1)     return 6;
+  if(a<1)       return 5;
+  if(a<10)      return 4;
+  if(a<1000)    return 2;
+  return 2;
+}
+const money=(v,places)=>{
+  const n=Number(v);
+  if(!isFinite(n)) return "—";
+  const d=places!==undefined?places:dp(n);
+  return n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+};
 const short=a=>a.slice(0,6)+"…"+a.slice(-4);
 /** Window length in the largest unit that still reads naturally. */
 function dur(sec){
@@ -709,7 +743,8 @@ function setMode(m){
   pending=null;
   document.querySelectorAll("[data-draw]").forEach(b=>
     b.classList.toggle("on", b.dataset.draw===drawMode));
-  const sv=$("svg"); if(sv) sv.className.baseVal = drawMode ? "armed" : "";
+  const sv=document.getElementById("svg");
+  if(sv) sv.setAttribute("class", drawMode ? "armed" : "");
   $("drawhint").textContent =
     drawMode==="h" ? "Click the chart to place a price level" :
     drawMode==="t" ? "Click two points to draw a trendline" :
@@ -885,21 +920,32 @@ function drawChart(){
     const b=$("toLive"); if(b) b.onclick=()=>{ offset=0; drawChart(); };
   }
 
-  const svg=$("svg");
+  const svg=document.getElementById("svg");
+  if(!svg) return;
   const local=ev=>{ const r=svg.getBoundingClientRect();
     return {x:(ev.clientX-r.left)/r.width*W, y:(ev.clientY-r.top)/r.height*H}; };
 
-  svg.className.baseVal = drawMode ? "armed" : "";
+  // setAttribute, not className: on an SVG element className is a read-only
+  // SVGAnimatedString, so assigning to it throws — and this line sits above
+  // every handler below, so one bad assignment silently unbound the whole
+  // chart: zoom, pan, drawing and indicators all at once.
+  const setCls = v => svg.setAttribute("class", v);
+  setCls(drawMode ? "armed" : "");
 
   svg.onpointerdown=ev=>{
     if(drawMode) return;                       // a draw tool owns the click
     panFrom={x:ev.clientX, off:offset};
-    svg.className.baseVal="panning";
+    setCls("panning");
     svg.setPointerCapture?.(ev.pointerId);
   };
   svg.onpointerup=ev=>{
     panFrom=null;
-    svg.className.baseVal = drawMode ? "armed" : "";
+    // setAttribute, not className: on an SVG element className is a read-only
+  // SVGAnimatedString, so assigning to it throws — and this line sits above
+  // every handler below, so one bad assignment silently unbound the whole
+  // chart: zoom, pan, drawing and indicators all at once.
+  const setCls = v => svg.setAttribute("class", v);
+  setCls(drawMode ? "armed" : "");
     svg.releasePointerCapture?.(ev.pointerId);
   };
 
@@ -918,7 +964,7 @@ function drawChart(){
     hoverIdx=Math.max(0,Math.min(cs.length-1,i)); showOHLC(cs[hoverIdx]); drawChart();
   };
   svg.onpointerleave=()=>{
-    if(panFrom){ panFrom=null; svg.className.baseVal = drawMode?"armed":""; }
+    if(panFrom){ panFrom=null; setCls(drawMode?"armed":""); }
     hoverIdx=null; showOHLC(cs[cs.length-1]); drawChart();
   };
 
@@ -1154,14 +1200,14 @@ function quote(){
   const p=px[cur]||0, fee=size*0.001, net=marg-fee, lev=net>0?size/net:0;
 
   $("qEntry").textContent = p?"$"+money(p):"no price";
-  $("qFee").textContent   = fee?money(fee)+" CHIP":"—";
+  $("qFee").textContent   = fee?money(fee,2)+" CHIP":"—";
   // The cap is half of SIZE, so it never moves with margin — which reads as
   // an enormous number sitting next to a small stake. Against the margin
   // actually at risk it says the useful thing: how far this trade can run
   // before it stops paying.
   if(size && net>0){
     const cap=size*0.5;
-    $("qCap").textContent = money(cap)+" CHIP · "+(cap/net).toFixed(1)+"x your margin";
+    $("qCap").textContent = money(cap,2)+" CHIP · "+(cap/net).toFixed(1)+"x your margin";
   } else $("qCap").textContent = "—";
 
   // Half of size, expressed as the move that gets you there — a 50x position
@@ -1629,7 +1675,7 @@ function paintFStats(){
   const wins=trades.filter(t=>t.net>0n).length;
   const val=Number(E.formatUnits(lpValue,6));
   const put=Number(E.formatUnits(lpIn-lpOut,6));
-  const sgn=v=>(v>=0?"+":"-")+money(Math.abs(v));
+  const sgn=v=>(v>=0?"+":"-")+money(Math.abs(v),2);
 
   $("fStats").innerHTML=`
     <div class="stat"><span class="k">Realized net</span>
@@ -1698,17 +1744,17 @@ function paintLp(){
   const idle=pool?Number(E.formatUnits(pool[2],6)):0;
   const res=pool?Number(E.formatUnits(pool[3],6)):0;
   const share=tot>0?val/tot*100:0;
-  const sgn=v=>(v>=0?"+":"-")+money(Math.abs(v));
+  const sgn=v=>(v>=0?"+":"-")+money(Math.abs(v),2);
 
   $("fLp").innerHTML=`<div class="sec" style="border-top:0">
-    <div class="kvrow"><span>Pool holds</span><b>${money(tot)} CHIP</b></div>
-    <div class="kvrow"><span>Idle, free to back new positions</span><b>${money(idle)} CHIP</b></div>
-    <div class="kvrow"><span>Reserved against open positions</span><b>${money(res)} CHIP</b></div>
+    <div class="kvrow"><span>Pool holds</span><b>${money(tot,2)} CHIP</b></div>
+    <div class="kvrow"><span>Idle, free to back new positions</span><b>${money(idle,2)} CHIP</b></div>
+    <div class="kvrow"><span>Reserved against open positions</span><b>${money(res,2)} CHIP</b></div>
     ${lpShares>0n?`
-    <div class="kvrow"><span>Your position is worth</span><b>${money(val)} CHIP · ${share.toFixed(1)}% of the pool</b></div>
-    <div class="kvrow"><span>You put in</span><b>${put>0?money(put)+" CHIP":"<span style='color:var(--amber)'>not in the readable range</span>"}</b></div>
+    <div class="kvrow"><span>Your position is worth</span><b>${money(val,2)} CHIP · ${share.toFixed(1)}% of the pool</b></div>
+    <div class="kvrow"><span>You put in</span><b>${put>0?money(put,2)+" CHIP":"<span style='color:var(--amber)'>not in the readable range</span>"}</b></div>
     <div class="kvrow"><span>Earned as the house</span><b class="${put>0?((val-put)>=0?"ok":"bad"):""}">${put>0?sgn(val-put)+" CHIP":"needs the deposit history"}</b></div>
-    <div class="kvrow"><span>Withdrawable right now</span><b>${money(free)} CHIP</b></div>`:`
+    <div class="kvrow"><span>Withdrawable right now</span><b>${money(free,2)} CHIP</b></div>`:`
     <p class="secP" style="margin-top:12px">You are not a depositor. Depositing makes you counterparty to
     every trade here — traders who lose pay into the pool, traders who win are paid out of it, and every
     fee lands here regardless of who was right.</p>`}
@@ -2028,6 +2074,25 @@ function setSpan(next, anchorRight){
 $("zIn").onclick  = ()=>setSpan(span/1.4, true);
 $("zOut").onclick = ()=>setSpan(span*1.4, true);
 $("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; drawChart(); };
+
+/* ── theme ────────────────────────────────────────────────────────── */
+(function(){
+  const T="pit.theme";
+  const apply=t=>{
+    document.documentElement.classList.toggle("light", t==="light");
+    $("btnTheme").textContent = t==="light" ? "☀" : "☾";
+    // The chart is drawn with the palette baked into the markup, so it has
+    // to be redrawn rather than merely restyled.
+    drawChart(); drawCurve();
+  };
+  let cur=localStorage.getItem(T) || "dark";
+  apply(cur);
+  $("btnTheme").onclick=()=>{
+    cur = cur==="light" ? "dark" : "light";
+    try{ localStorage.setItem(T,cur); }catch(e){}
+    apply(cur);
+  };
+})();
 
 $("btnRpc").onclick = nextRpc;
 $("rpcN").textContent = String(rpcIdx+1);

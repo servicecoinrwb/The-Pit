@@ -622,9 +622,16 @@ async function refresh(){
     // any sane precision and reads as though you own nothing. What the
     // position is worth, and what fraction of the pool it is, are the two
     // numbers that mean something.
+    //
+    // Both come from convertToAssets rather than from a ratio computed here.
+    // An earlier version divided totalAssets by supply directly, which
+    // disagreed with itself: totalAssets nets off unrealised trader profit
+    // while supply does not, so the two halves of the pool did not add up to
+    // the whole. Asking the vault what a share is worth avoids inventing a
+    // second, subtly different accounting.
     const supply = st[4];
     const dead   = init ? await b.DEAD_SHARES() : 0n;
-    const seedWorth = (init && supply > 0n) ? st[0] * dead / supply : 0n;
+    const seedWorth = (init && dead > 0n) ? await b.convertToAssets(dead) : 0n;
     $("bSeed").textContent = init
       ? fmt(seedWorth,6) + " CHIP  (burned at seeding, unwithdrawable)"
       : "—";
@@ -637,7 +644,10 @@ async function refresh(){
         $("bShares").className = "v warn";
       } else {
         const worth = await b.convertToAssets(sh);
-        const pctOfPool = supply > 0n ? Number(sh * 10000n / supply) / 100 : 0;
+        // Against total assets, not against share supply — those are two
+        // different denominators and only one of them is what a reader means
+        // by "of the pool".
+        const pctOfPool = st[0] > 0n ? Number(worth * 10000n / st[0]) / 100 : 0;
         $("bShares").textContent = fmt(worth,6) + " CHIP  ·  " + pctOfPool.toFixed(1) + "% of the pool";
         $("bShares").className = "v ok";
       }

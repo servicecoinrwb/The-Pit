@@ -1520,7 +1520,22 @@ document.querySelectorAll(".tb").forEach(b=>b.onclick=()=>{
 });
 
 /* ── refresh ──────────────────────────────────────────────────────── */
+/* Several things want a refresh — boot, connecting a wallet, switching view,
+   the timer, and every transaction. They used to be able to run at once, and
+   two cycles firing in the same second doubled the request burst against a
+   connection that had not warmed up yet. That is what the cold-start failures
+   were: not a bad endpoint, a herd.
+
+   Overlapping callers now join the run already in flight instead of starting
+   a second one. */
+let refreshing=null;
 async function refresh(){
+  if(refreshing) return refreshing;
+  refreshing = doRefresh().finally(()=>{ refreshing=null; });
+  return refreshing;
+}
+
+async function doRefresh(){
   const p=provider||rp();
   try{
     const eng=C.eng(p);
@@ -1544,7 +1559,14 @@ async function refresh(){
     await history(p);
     paintMkts(); drawChart();
     readOk();
-  }catch(e){ readFail("Price read", e); }
+  }catch(e){
+    readFail("Price read", e);
+    // A cold connection often fails once and then works. Rather than leaving
+    // the page empty until the next scheduled cycle thirty seconds away, try
+    // again shortly — but only before the first success, so this cannot turn
+    // into a retry storm on a genuinely dead endpoint.
+    if(!everLoaded) setTimeout(()=>refresh(), 2500);
+  }
 
   try{
     const fl=C.floor(p);
@@ -1644,6 +1666,7 @@ document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{
   if(view==="trade"){ paintMkts(); drawChart(); }
   if(view==="folio"){ paintFStats(); paintClosed(); paintLp(); drawCurve(); loadHistory(); }
   if(view==="admin"){ paintAdmin(); }
+  // Joins an in-flight cycle rather than starting another.
   refresh();
 });
 document.querySelectorAll("[data-ftab]").forEach(b=>b.onclick=()=>{
@@ -2207,7 +2230,16 @@ $("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; drawChart(); };
 
 $("btnRpc").onclick = nextRpc;
 $("rpcN").textContent = String(rpcIdx+1);
-paintMkts(); paintAdmin(); paintFStats(); paintLp(); connect(false); refresh();
+paintMkts(); paintAdmin(); paintFStats(); paintLp();
+
+/* One cheap call before the burst. A fresh JsonRpcProvider has to resolve
+   the network and open a connection on its first request, and firing twenty
+   reads into that cold state is what produced the failures at load. */
+(async()=>{
+  try{ await rp().getBlockNumber(); }catch(e){}
+  await connect(false);
+  refresh();
+})();
 // History is detached from the refresh cycle on purpose: it is slow, it can
 // hang, and nothing else should wait on it.
 setTimeout(()=>loadHistory(), 1200);

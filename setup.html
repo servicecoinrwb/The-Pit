@@ -133,7 +133,7 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
 
 <header>
   <h1 id="pageTitle">Setup <span>&amp; admin</span></h1>
-  <div class="sub"><a href="trade.html" style="color:var(--sky)">&larr; trading</a> · <a href="portfolio.html" style="color:var(--sky)">portfolio</a> · one-time bring-up, collateral minting, and owner calls</div>
+  <div class="sub"><a href="trade.html" style="color:var(--sky)">&larr; trading</a> · <a href="portfolio.html" style="color:var(--sky)">portfolio</a> · bring-up and owner calls · deposits and withdrawals live on the <a href="portfolio.html" style="color:var(--sky)">portfolio</a></div>
   <div class="net"><span class="dot" id="netdot"></span><span id="netlabel">Not connected</span></div>
   <div id="roleNote" class="sub" style="margin-top:9px;color:var(--amber)"></div>
   <div class="sub" style="margin-top:7px">
@@ -189,48 +189,19 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
       <input id="seedAmt" value="1000" inputmode="decimal">
       <button id="btnSeed">Approve &amp; seed</button>
     </div>
-    <div class="hint">Amount in whole Chips. Runs the approval and the seed as two signatures.</div>
+    <div class="hint">Amount in whole Chips, and this is not a deposit — seeded assets mint their shares to a
+      burn address, so whatever goes in here can never be withdrawn by anyone. A thousand is plenty; it exists
+      only to put a floor under the share supply. To actually fund the pool, deposit on the
+      <a href="portfolio.html" style="color:var(--sky)">portfolio page</a> instead.</div>
     <div class="why" id="why3"></div>
   </div>
 </section>
 
 <!-- 4 ── deposit -->
-<section>
-  <div class="head"><span class="step" id="s4">04</span><h2>Pool depth</h2></div>
-  <div class="how">This is the money that takes the other side of every trade. Traders who win are paid from here; traders who lose pay into here. Deeper means the desk can carry larger positions before it runs out of room to honour them.</div>
-  <div class="body">
-    <div class="row"><span class="k">Total assets</span><span class="v" id="bAssets">—</span></div>
-    <div class="row"><span class="k">Idle (withdrawable)</span><span class="v" id="bIdle">—</span></div>
-    <div class="row"><span class="k">Reserved against positions</span><span class="v" id="bRes">—</span></div>
-    <div class="row"><span class="k">Your share of the pool</span><span class="v" id="bShares">—</span></div>
-    <div class="row"><span class="k">Locked in the seed</span><span class="v" id="bSeed">—</span></div>
-    <div class="row"><span class="k">Liability feed</span><span class="v" id="bHealth">—</span></div>
-    <div class="act">
-      <input id="depAmt" value="300000" inputmode="decimal">
-      <button id="btnDeposit">Approve &amp; deposit</button>
-    </div>
-
-    <div style="border-top:1px solid var(--edge);margin-top:15px;padding-top:13px">
-      <div class="row"><span class="k">Your position is worth</span><span class="v" id="myVal">—</span></div>
-      <div class="row"><span class="k">Withdrawable right now</span><span class="v" id="myMax">—</span></div>
-      <div class="row"><span class="k">Earned as the house</span><span class="v" id="myRet">—</span></div>
-      <div class="act">
-        <input id="wdAmt" placeholder="amount in CHIP" inputmode="decimal">
-        <button id="btnWithdraw" class="ghost">Withdraw</button>
-        <button id="btnExit" class="ghost">Withdraw all</button>
-      </div>
-      <div class="hint">Withdrawals are capped by idle capital, not by what your shares are worth.
-        Money reserved against open positions belongs to those positions until they close — a winning
-        trader has to be payable from something, and that something cannot also have been withdrawn.</div>
-      <div class="why" id="whyW"></div>
-    </div>
-    <div class="why" id="why4"></div>
-  </div>
-</section>
 
 <!-- 5 ── engine -->
 <section id="secEngine" hidden>
-  <div class="head"><span class="step" id="s5">05</span><h2>Price engine</h2>
+  <div class="head"><span class="step" id="s5">04</span><h2>Price engine</h2>
     <span class="addr" id="aEngine"></span></div>
   <div class="how">The desk prices everything from here. A price older than the staleness window stops being a price and trading halts — a dead feeder shuts the desk rather than settling anyone against a stale print. US30 also closes outside its session, which is why it reads shut on a weekend.</div>
   <div class="body">
@@ -250,54 +221,12 @@ select{font:14px "IBM Plex Mono",monospace;background:var(--ink);color:var(--pap
 
 
 <!-- chart -->
-<section>
-  <div class="head"><h2>Price history</h2><span class="addr" id="chartMeta"></span></div>
-  <div class="how">Drawn from the engine's own PricePushed events, not an exchange feed — this is the price your positions actually settle against. Gaps mean the feeder skipped a push, and a flat run means it was rejected or down. Both are worth noticing.</div>
-  <div class="body">
-    <div class="act" id="chartTabs"></div>
-    <div id="chartBox" style="margin-top:12px"></div>
-    <div class="why" id="whyC"></div>
-  </div>
-</section>
 
 <!-- 06 ── ticket -->
-<section>
-  <div class="head"><span class="step" id="s6">06</span><h2>Order ticket</h2>
-    <span class="addr" id="aFloor"></span></div>
-  <div class="how">Size is the notional you control; margin is what you post against it. Leverage is size divided by margin and the engine caps it per market. Profit is capped at half your size and reserved in the pool the moment you open — a runner past that cap stops earning, which is the price of the pool being able to honour it at all.</div>
-  <div class="body">
-    <div class="act">
-      <select id="tkMkt"></select>
-      <select id="tkSide"><option value="long">Long</option><option value="short">Short</option></select>
-    </div>
-    <div class="act">
-      <input id="tkSize" value="1000" inputmode="decimal" placeholder="size">
-      <input id="tkMargin" value="100" inputmode="decimal" placeholder="margin">
-      <button id="btnOpen">Open</button>
-    </div>
-    <div class="row"><span class="k">Leverage</span><span class="v" id="tkLev">—</span></div>
-    <div class="row"><span class="k">Entry (live)</span><span class="v" id="tkPx">—</span></div>
-    <div class="row"><span class="k">Open fee</span><span class="v" id="tkFee">—</span></div>
-    <div class="row"><span class="k">Reserved from pool</span><span class="v" id="tkRes">—</span></div>
-    <div class="row"><span class="k">Est. liquidation</span><span class="v" id="tkLiq">—</span></div>
-    <div class="why" id="why6"></div>
-  </div>
-</section>
 
 <!-- 07 ── positions -->
-<section>
-  <div class="head"><span class="step" id="s7">07</span><h2>Open positions</h2></div>
-  <div class="how">Equity is margin plus profit, less funding and the close fee. When it falls to the maintenance level anyone can liquidate you and the remainder goes to the pool. Closing needs a live price, so a halted market traps a position until it reopens — margin can still be added to defend it.</div>
-  <div class="body"><div id="posList"><div class="row"><span class="k">—</span><span class="v">nothing open</span></div></div>
-    <div class="why" id="why7"></div></div>
-</section>
 
 <!-- 08 ── desk state -->
-<section>
-  <div class="head"><h2>Desk exposure</h2></div>
-  <div class="how">Skew is longs minus shorts. The pool is counterparty to everyone, so when longs outweigh shorts the pool is net short and collects funding from longs directly. Pool PnL is what the desk currently owes traders — it comes straight off the vault's net asset value.</div>
-  <div class="body"><div id="deskList"></div></div>
-</section>
 
 <!-- 09 ── admin -->
 <section id="secAdmin" hidden>
@@ -541,8 +470,6 @@ async function refresh(){
         px: Number(value)===0 ? "—" : "$"+fmt(value,18,2) });
     }
     paintTape(rows);
-    await loadHistory(p);
-    drawChart();
     $("mCount").textContent = (await en.marketCount()).toString();
     try{
       const b = C.ballast(p);
@@ -692,10 +619,6 @@ async function refresh(){
     else say("why4","","");
   }catch(e){ log("Vault read failed: "+(e.shortMessage||e.message)); }
 
-  /* perp */
-  try { await paintDesk(p); await paintPositions(p); quote(); }
-  catch(e){ log("Desk read failed: "+(e.shortMessage||e.message)); }
-
   /* owner
      The contracts already reject non-owner calls, so this is presentation
      rather than protection — but showing someone a Force Push button that
@@ -833,54 +756,13 @@ $("btnSeed").onclick = async () => {
   await send(()=>C.ballast(signer).initialise(amt), "Seed the vault", "why3");
 };
 
-$("btnDeposit").onclick = async () => {
-  if (needWallet("why4")) return;
-  const amt = E.parseUnits(($("depAmt").value||"0").trim(), 6);
-  if (amt === 0n){ say("why4","Enter an amount above zero.","err"); return; }
-  const c = C.chips(signer);
-  const bal = await c.balanceOf(me);
-  if (bal < amt){ say("why4",`Only ${fmt(bal,6)} Chips on hand. Mint more, or deposit less.`,"err"); return; }
-  const al = await c.allowance(me, A.ballast);
-  if (al < amt){
-    await send(()=>c.approve(A.ballast, amt), "Approve "+$("depAmt").value+" Chips", "why4");
-  }
-  await send(()=>C.ballast(signer).deposit(amt, me), "Deposit into Ballast", "why4");
-};
 
-$("btnWithdraw").onclick = async () => {
-  if (needWallet("whyW")) return;
-  const raw = ($("wdAmt").value||"").trim();
-  if (!raw){ say("whyW","Enter an amount.","err"); return; }
-  const amt = E.parseUnits(raw, 6);
-  const b = C.ballast(signer);
-  const cap = await b.maxWithdraw(me);
-  if (amt > cap){
-    say("whyW",`Only ${fmt(cap,6)} CHIP is withdrawable — the rest is reserved against open positions.`,"err");
-    return;
-  }
-  await send(()=>b.withdraw(amt, me, me), "Withdraw "+raw+" CHIP", "whyW");
-};
 
-$("btnExit").onclick = async () => {
-  if (needWallet("whyW")) return;
-  const b = C.ballast(signer);
-  // Redeem by shares rather than assets so the last exit cannot leave a
-  // dust remainder behind from rounding between the two.
-  const shares = await b.maxRedeem(me);
-  if (shares === 0n){ say("whyW","Nothing withdrawable right now.","err"); return; }
-  await send(()=>b.redeem(shares, me, me), "Withdraw everything available", "whyW");
-};
 
-$("btnPush").onclick = () => {
-  if (needWallet("why5")) return;
-  const ids=[], vals=[];
-  [["pxEth",1],["pxBtc",2],["pxUs30",3]].forEach(([el,id])=>{
-    const v = ($(el).value||"").trim();
-    if (v){ ids.push(id); vals.push(E.parseUnits(v,18)); }
-  });
-  if (!ids.length){ say("why5","Enter at least one price.","err"); return; }
-  send(()=>C.engine(signer).pushPrices(ids, vals), "Push "+ids.length+" price(s)", "why5");
-};
+
+
+
+
 
 
 
@@ -889,255 +771,30 @@ let chartMkt = 1;
 const series = {1:[],2:[],3:[]};          // {t, p}
 let logsTried = false;
 
-$("chartTabs").innerHTML = MKT.map(m=>
-  `<button class="tab${m.id===1?' on':''}" data-mkt="${m.id}">${m.sym}</button>`).join("");
+
 $("chartTabs").querySelectorAll("[data-mkt]").forEach(b=>b.onclick=()=>{
   chartMkt = Number(b.dataset.mkt);
   $("chartTabs").querySelectorAll(".tab").forEach(x=>x.className="tab"+(Number(x.dataset.mkt)===chartMkt?" on":""));
-  drawChart();
 });
 
-/**
- * Pull PricePushed history. Public RPCs cap getLogs ranges, so this walks
- * backwards in chunks and stops at the first refusal rather than failing
- * the whole read — a short chart beats no chart.
- */
-async function loadHistory(p){
-  if (logsTried) return;
-  logsTried = true;
-  try{
-    const latest = await p.getBlockNumber();
-    const topic  = E.id("PricePushed(uint256,uint256,uint64,uint64)");
-    const iface  = new E.Interface(["event PricePushed(uint256 indexed id,uint256 value,uint64 roundId,uint64 at)"]);
-    let from = latest, span = 5000, got = 0;
 
-    for (let i=0; i<8 && from > 0; i++){
-      const lo = Math.max(0, from - span);
-      let logs;
-      try{
-        logs = await p.getLogs({ address:A.engine, topics:[topic], fromBlock:lo, toBlock:from });
-      }catch(e){ break; }                   // range refused — keep what we have
-      for (const l of logs){
-        try{
-          const d = iface.parseLog(l);
-          if (!d) continue;
-          // Positional, not named. ethers' Result extends Array, so `.at`
-          // resolves to Array.prototype.at — the method, not the event's
-          // `at` parameter. Reading it by name yields a function, and
-          // Number(function) is NaN, which silently flattens every point
-          // onto the same x position.
-          const id = Number(d.args[0]);
-          const t  = Number(d.args[3]);
-          const px = Number(E.formatUnits(d.args[1], 18));
-          if (series[id] && Number.isFinite(t) && t > 0 && Number.isFinite(px) && px > 0){
-            series[id].push({ t, p:px });
-            got++;
-          }
-        }catch{}
-      }
-      from = lo - 1;
-      if (got > 1200) break;
-    }
-    for (const k in series) series[k].sort((a,b)=>a.t-b.t);
-    say("whyC", got ? "" : "No history yet — the chart fills in as the feeder pushes.", got?"":"");
-  }catch(e){
-    say("whyC","Could not read history from this RPC. The chart will build up live instead.","");
-  }
-}
 
-/** Append the live tape reading so the chart keeps moving between log pulls. */
-function pushLive(id, price, at){
-  const s = series[id]; if (!s) return;
-  if (!Number.isFinite(price) || price <= 0) return;
-  if (!Number.isFinite(at)    || at    <= 0) return;
-  if (s.length && s[s.length-1].t >= at) return;
-  s.push({ t:at, p:price });
-  if (s.length > 2000) s.shift();
-}
 
-function drawChart(){
-  const s = (series[chartMkt] || []).filter(d =>
-    Number.isFinite(d.t) && Number.isFinite(d.p) && d.t > 0 && d.p > 0);
-  const sym = (MKT.find(m=>m.id===chartMkt)||{}).sym || "";
-  const box = $("chartBox");
 
-  if (s.length < 2){
-    box.innerHTML = `<div class="row"><span class="k">${sym}</span><span class="v">not enough points yet — needs two pushes</span></div>`;
-    $("chartMeta").textContent = "";
-    return;
-  }
 
-  const W=700, H=220, PL=8, PR=62, PT=12, PB=22;
-  const xs = s.map(d=>d.t), ys = s.map(d=>d.p);
-  const t0=Math.min(...xs), t1=Math.max(...xs);
-  let lo=Math.min(...ys), hi=Math.max(...ys);
-  if (hi===lo){ hi=lo*1.0005; lo=lo*0.9995; }
-  const pad=(hi-lo)*0.12; lo-=pad; hi+=pad;
-
-  const X = t => PL + (t-t0)/((t1-t0)||1) * (W-PL-PR);
-  const Y = v => PT + (hi-v)/((hi-lo)||1) * (H-PT-PB);
-
-  const pts = s.map(d=>`${X(d.t).toFixed(1)},${Y(d.p).toFixed(1)}`).join(" ");
-  const area = `${PL},${H-PB} ${pts} ${X(t1).toFixed(1)},${H-PB}`;
-
-  let grid="";
-  for (let i=0;i<=3;i++){
-    const v = lo + (hi-lo)*i/3, y = Y(v);
-    grid += `<line class="gl" x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}"/>`
-         +  `<text x="${W-PR+6}" y="${(y+4).toFixed(1)}">${v.toLocaleString(undefined,{maximumFractionDigits:2})}</text>`;
-  }
-
-  const last = s[s.length-1];
-  const mins = Math.round((t1-t0)/60);
-  const stamp = ts => Number.isFinite(ts) && ts>0
-    ? new Date(ts*1000).toLocaleTimeString() : "";
-
-  box.innerHTML = `<div class="chart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
-      aria-label="${sym} price, last ${mins} minutes">
-    ${grid}
-    <polygon class="ar" points="${area}"/>
-    <polyline class="ln" points="${pts}"/>
-    <circle cx="${X(last.t).toFixed(1)}" cy="${Y(last.p).toFixed(1)}" r="3" class="last"/>
-    <text x="${PL}" y="${H-6}">${stamp(t0)}</text>
-    <text x="${(W-PR-70).toFixed(0)}" y="${H-6}">${stamp(t1)}</text>
-  </svg></div>`;
-
-  const first = s[0].p, chg = (last.p/first - 1)*100;
-  $("chartMeta").textContent =
-    `${s.length} points${Number.isFinite(mins)&&mins>0?" · "+mins+"m":""} · ${chg>=0?"+":""}${chg.toFixed(2)}%`;
-}
 
 /* ─── ticket ────────────────────────────────────────────────────────── */
-$("tkMkt").innerHTML = MKT.map(m=>`<option value="${m.id}">${m.sym}</option>`).join("");
 
 let lastPx = {};                       // marketId -> 18dec price
 let lastStatus = {};
 
-function quote(){
-  const id   = Number($("tkMkt").value);
-  const side = $("tkSide").value === "long";
-  const size = Number($("tkSize").value||0);
-  const marg = Number($("tkMargin").value||0);
-  const meta = MKT.find(m=>m.id===id);
 
-  const fee  = size * 10 / 10000;            // openFeeBps default 10
-  const net  = marg - fee;
-  const lev  = net > 0 ? size/net : 0;
-
-  $("tkFee").textContent = fee.toFixed(2)+" CHIP";
-  $("tkRes").textContent = (size*0.5).toFixed(2)+" CHIP  (50% of size)";
-  $("tkLev").textContent = net>0 ? lev.toFixed(1)+"x  (max "+meta.lev+"x)" : "—";
-  $("tkLev").className   = "v " + (lev>meta.lev ? "bad" : "");
-
-  const px = lastPx[id] ? Number(E.formatUnits(lastPx[id],18)) : 0;
-  $("tkPx").textContent = px ? "$"+px.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : "no price";
-
-  if (px && net>0 && size>0){
-    // equity hits maintenance (1% of size) after this much adverse move
-    const room = net - size*0.001 - size*0.01;       // close fee + maintenance
-    const move = room * px / size;
-    const liq  = side ? px - move : px + move;
-    $("tkLiq").textContent = liq>0 ? "$"+liq.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : "immediate";
-  } else $("tkLiq").textContent = "—";
-
-  let msg = "", kind = "";
-  if (lastStatus[id] !== 0){ msg = `${meta.sym} is ${STATUS[lastStatus[id]] ?? "unavailable"} — opening will revert until it is live.`; kind="err"; }
-  else if (size < 10) { msg = "Minimum size is 10 CHIP."; kind="err"; }
-  else if (lev > meta.lev){ msg = `${lev.toFixed(1)}x exceeds the ${meta.lev}x cap on ${meta.sym}. Post more margin or cut size.`; kind="err"; }
-  else if (net <= 0){ msg = "Margin must exceed the open fee."; kind="err"; }
-  say("why6", msg, kind);
-  $("btnOpen").disabled = !!msg;
-}
-["tkMkt","tkSide","tkSize","tkMargin"].forEach(id=>{
-  $(id).addEventListener("input", quote); $(id).addEventListener("change", quote);
-});
-
-$("btnOpen").onclick = async () => {
-  if (needWallet("why6")) return;
-  const id = Number($("tkMkt").value);
-  const isLong = $("tkSide").value === "long";
-  const size = E.parseUnits(($("tkSize").value||"0").trim(),6);
-  const marg = E.parseUnits(($("tkMargin").value||"0").trim(),6);
-  const c = C.chips(signer);
-  const bal = await c.balanceOf(me);
-  if (bal < marg){ say("why6",`Only ${fmt(bal,6)} CHIP on hand for ${fmt(marg,6)} of margin.`,"err"); return; }
-  const al = await c.allowance(me, A.floorplan);
-  if (al < marg) await send(()=>c.approve(A.floorplan, marg), "Approve margin", "why6");
-  await send(()=>C.floor(signer).open(id, isLong, size, marg), "Open position", "why6");
-};
 
 /* ─── positions ─────────────────────────────────────────────────────── */
-async function paintPositions(p){
-  if (!me){ $("posList").innerHTML = '<div class="row"><span class="k">—</span><span class="v">connect a wallet</span></div>'; return; }
-  const f = C.floor(p);
-  let ids = [];
-  try { ids = await f.positionsOf(me); } catch(e){ return; }
 
-  const cards = [];
-  for (const idB of ids){
-    let v;
-    try { v = await f.positionView(idB); } catch(e){ continue; }
-    const pos = v[0];
-    if (pos.owner === E.ZeroAddress) continue;      // closed
-    const sym = (MKT.find(m=>m.id===Number(pos.marketId))||{}).sym || pos.marketId;
-    const pnl = v[2], eq = v[4], liq = v[6], danger = v[7];
-    const px  = v[1];
-    const pnlPct = pos.margin>0n ? Number(pnl)*100/Number(pos.margin) : 0;
-    cards.push(`<div class="pos ${danger?'danger':''}">
-      ${danger?'<div class="warnbar">Below maintenance — this position can be liquidated by anyone right now.</div>':''}
-      <div class="top">
-        <span><span class="tag ${pos.isLong?'long':'short'}">${pos.isLong?'LONG':'SHORT'}</span> ${sym} #${idB}</span>
-        <span class="${Number(pnl)>=0?'v ok':'v bad'}">${Number(pnl)>=0?'+':''}${fmt(pnl<0n?-pnl:pnl,6)} CHIP ${Number(pnl)<0?'loss':'profit'} (${pnlPct.toFixed(1)}%)</span>
-      </div>
-      <div class="row"><span class="k">Size / margin</span><span class="v">${fmt(pos.size,6)} / ${fmt(pos.margin,6)}</span></div>
-      <div class="row"><span class="k">Entry / mark</span><span class="v">${fmt(pos.entryPrice,18)} → ${fmt(px,18)}</span></div>
-      <div class="row"><span class="k">Funding paid</span><span class="v">${Number(v[3])>=0?'':'-'}${fmt(v[3]<0n?-v[3]:v[3],6)}</span></div>
-      <div class="row"><span class="k">Equity / maintenance</span><span class="v">${fmt(eq<0n?0n:eq,6)} / ${fmt(v[5],6)}</span></div>
-      <div class="row"><span class="k">Liquidation price</span><span class="v ${danger?'bad':'warn'}">${fmt(liq,18)}</span></div>
-      <div class="act">
-        <button data-close="${idB}">Close</button>
-        <button data-add="${idB}" class="ghost">Add 50 margin</button>
-      </div>
-    </div>`);
-  }
-  $("posList").innerHTML = cards.length ? cards.join("")
-    : '<div class="row"><span class="k">—</span><span class="v">nothing open</span></div>';
-
-  $("posList").querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>{
-    if (needWallet("why7")) return;
-    send(()=>C.floor(signer).close(b.dataset.close), "Close position #"+b.dataset.close, "why7");
-  });
-  $("posList").querySelectorAll("[data-add]").forEach(b=>b.onclick=async ()=>{
-    if (needWallet("why7")) return;
-    const amt = E.parseUnits("50",6);
-    const c = C.chips(signer);
-    if ((await c.allowance(me,A.floorplan)) < amt)
-      await send(()=>c.approve(A.floorplan, amt), "Approve margin", "why7");
-    await send(()=>C.floor(signer).addMargin(b.dataset.add, amt), "Add margin", "why7");
-  });
-}
 
 /* ─── desk exposure ─────────────────────────────────────────────────── */
-async function paintDesk(p){
-  const f = C.floor(p);
-  const rows = [];
-  let owed = 0n;
-  try { owed = await f.poolPnl(); } catch(e){}
-  for (const m of MKT){
-    let v; try { v = await f.marketView(m.id); } catch(e){ continue; }
-    const L = v[0], S = v[1], skew = v[2], fh = v[3];
-    if (L===0n && S===0n){
-      rows.push(`<div class="row"><span class="k">${m.sym}</span><span class="v">no open interest</span></div>`);
-      continue;
-    }
-    const rate = Number(E.formatUnits(fh,18))*100;
-    rows.push(`<div class="row"><span class="k">${m.sym} long / short</span><span class="v">${fmt(L,6)} / ${fmt(S,6)}</span></div>`
-      + `<div class="row"><span class="k">${m.sym} funding</span><span class="v">${rate>=0?'longs pay':'pool pays longs'} ${Math.abs(rate).toFixed(4)}%/hr</span></div>`);
-  }
-  const sign = owed >= 0n;
-  rows.push(`<div class="row"><span class="k">Pool owes traders</span><span class="v ${sign&&owed>0n?'bad':'ok'}">${sign?'':'-'}${fmt(owed<0n?-owed:owed,6)} CHIP</span></div>`);
-  $("deskList").innerHTML = rows.join("");
-}
+
 
 /* ─── admin ─────────────────────────────────────────────────────────── */
 $("btnPusher").onclick = () => {
@@ -1288,7 +945,6 @@ $("aChips").textContent   = short(A.chips);
 $("aBallast").textContent = short(A.ballast);
 $("aEngine").textContent  = short(A.engine);
 $("aFloor").textContent   = short(A.floorplan);
-quote();
 document.getElementById("btnRpc").onclick = () => {
   const next = (Number(localStorage.getItem("pit.rpc")||0) + 1) % RPCS.length;
   localStorage.setItem("pit.rpc", String(next));

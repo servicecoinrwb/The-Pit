@@ -500,6 +500,27 @@ const BAL2=["function balanceOf(address) view returns (uint256)",
   "function withdraw(uint256,address,address) returns (uint256)",
   "function redeem(uint256,address,address) returns (uint256)",
   "function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
+/* Multicall3 sits at the same address on nearly every chain. Batching the
+   per-market reads is the difference between about forty sequential requests
+   a cycle and three — and forty is what the public endpoints were refusing.
+   If it is not deployed here the code falls back to reading one at a time. */
+const MULTICALL="0xcA11bde05977b3631167028862bE2a173976CA11";
+const MC=["function aggregate3(tuple(address target,bool allowFailure,bytes callData)[] calls) view returns (tuple(bool success,bytes returnData)[])"];
+let mcOk=null;                       // null = untested
+
+async function batch(p, calls){
+  if(mcOk===false) return null;
+  try{
+    const mc=new E.Contract(MULTICALL,MC,p);
+    const res=await mc.aggregate3(calls.map(c=>({target:c.to,allowFailure:true,callData:c.data})));
+    mcOk=true;
+    return res;
+  }catch(e){
+    if(mcOk===null){ mcOk=false; log("no multicall on this chain — reading one at a time"); }
+    return null;
+  }
+}
+
 const CHIPS=["function balanceOf(address) view returns (uint256)",
   "function allowance(address,address) view returns (uint256)",
   "function approve(address,uint256) returns (bool)",
@@ -572,14 +593,27 @@ function nextRpc(){
 /* Consecutive read failures usually mean this endpoint is refusing us
    rather than that the chain is down — the feeder proves the chain is fine.
    Rotate rather than sit there failing. */
-let readFails = 0;
+/* Rotation used to fire after three failures and immediately retry, which
+   on a bad minute meant cycling all four endpoints in a second and turning
+   one failed read into four. It now needs sustained failure and waits for
+   the next scheduled refresh rather than forcing one. */
+let readFails = 0, lastRotate = 0;
 function readOk(){ readFails = 0; $("rpcWarn").textContent = ""; }
 function readFail(what, e){
   log(what+" failed: "+(e.shortMessage||e.message));
-  if (++readFails >= 3){
-    $("rpcWarn").textContent = `RPC ${rpcIdx+1} is refusing reads — switching.`;
+  readFails++;
+  $("rpcWarn").textContent = readFails>1 ? `${readFails} reads refused` : "";
+  const enough = readFails >= 5;
+  const cooled = Date.now() - lastRotate > 60000;
+  if (enough && cooled){
+    lastRotate = Date.now();
     readFails = 0;
-    nextRpc();
+    rpcIdx = (rpcIdx+1) % RPCS.length;
+    localStorage.setItem("pit.rpc", String(rpcIdx));
+    read = null;
+    $("rpcN").textContent = String(rpcIdx+1);
+    $("rpcWarn").textContent = `switched to RPC ${rpcIdx+1}`;
+    log("switched to RPC "+(rpcIdx+1)+" of "+RPCS.length+" after repeated refusals");
   }
 }
 const C={chips:p=>new E.Contract(A.chips,ERC20,p),
@@ -1339,11 +1373,23 @@ document.querySelectorAll(".tb").forEach(b=>b.onclick=()=>{
 async function refresh(){
   const p=provider||rp();
   try{
-    for(const m of MKT){
-      const [v,at,,s]=await C.eng(p).peek(m.id);
-      px[m.id]=Number(v)?Number(E.formatUnits(v,18)):0;
-      stat[m.id]=Number(s);
-      live(m.id,px[m.id],Number(at));
+    const eng=C.eng(p);
+    const packed=await batch(p, MKT.map(m=>({to:A.engine, data:eng.interface.encodeFunctionData("peek",[m.id])})));
+    if(packed){
+      MKT.forEach((m,i)=>{
+        if(!packed[i].success) return;
+        const [v,at,,st2]=eng.interface.decodeFunctionResult("peek",packed[i].returnData);
+        px[m.id]=Number(v)?Number(E.formatUnits(v,18)):0;
+        stat[m.id]=Number(st2);
+        live(m.id,px[m.id],Number(at));
+      });
+    } else {
+      for(const m of MKT){
+        const [v,at,,s2]=await eng.peek(m.id);
+        px[m.id]=Number(v)?Number(E.formatUnits(v,18)):0;
+        stat[m.id]=Number(s2);
+        live(m.id,px[m.id],Number(at));
+      }
     }
     await history(p);
     paintMkts(); drawChart();
@@ -1351,9 +1397,19 @@ async function refresh(){
   }catch(e){ readFail("Price read", e); }
 
   try{
-    for(const m of MKT){
-      const v=await C.floor(p).marketView(m.id);
-      mstate[m.id]={L:v[0],S:v[1],funding:v[3],reserved:v[5]};
+    const fl=C.floor(p);
+    const mv=await batch(p, MKT.map(m=>({to:A.floorplan, data:fl.interface.encodeFunctionData("marketView",[m.id])})));
+    if(mv){
+      MKT.forEach((m,i)=>{
+        if(!mv[i].success) return;
+        const v=fl.interface.decodeFunctionResult("marketView",mv[i].returnData);
+        mstate[m.id]={L:v[0],S:v[1],funding:v[3],reserved:v[5]};
+      });
+    } else {
+      for(const m of MKT){
+        const v=await fl.marketView(m.id);
+        mstate[m.id]={L:v[0],S:v[1],funding:v[3],reserved:v[5]};
+      }
     }
     // ethers' Result is frozen — attaching a property to it silently fails
     // and the undefined read downstream throws, which took the whole stats

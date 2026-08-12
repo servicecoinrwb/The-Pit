@@ -560,7 +560,10 @@ async function batch(p, calls){
       if(mcOk===null){ mcOk=false; log("no multicall on this chain — reading one at a time"); }
       return null;
     }
-    log("multicall request failed ("+msg+") — falling back for this cycle only");
+    // Logged once rather than on every cycle: repeated identical lines bury
+    // the entries that actually mean something.
+    if(!batch._warned){ batch._warned=true;
+      log("multicall unavailable on this endpoint — reading singly, will retry"); }
     return null;                       // mcOk stays null, so it tries again
   }
 }
@@ -691,9 +694,13 @@ function readFail(what, e){
   // page that is broken. Saying "refused" then is alarming and wrong.
   $("rpcWarn").textContent = !everLoaded ? "loading…"
     : readFails>1 ? `${readFails} reads refused` : "";
+  /* Rotating mid-read invalidates the provider the current cycle is using,
+     and that failure rotates again — RPC 3 to 4 to 1 to 2 in four seconds,
+     none of them given a chance to answer. A rotation only helps if the new
+     endpoint gets a quiet cycle to prove itself. */
   const enough = readFails >= 5;
   const cooled = Date.now() - lastRotate > 60000;
-  if (enough && cooled){
+  if (enough && cooled && !refreshing){
     lastRotate = Date.now();
     readFails = 0;
     rpcIdx = (rpcIdx+1) % RPCS.length;
@@ -1823,6 +1830,10 @@ async function scanSmart(p,address,topics,latest){
     }catch(e){}
   }
   // Nothing here. Another endpoint may serve what this one refused.
+  // These are throwaway providers used only for this query. Their failures
+  // are expected and are deliberately not reported to readFail — the live
+  // connection should not be rotated because a fallback probe came back
+  // empty.
   for(let i=1;i<RPCS.length;i++){
     const alt=new E.JsonRpcProvider(RPCS[(rpcIdx+i)%RPCS.length], CHAIN,
       {staticNetwork:true, batchMaxCount:12});
@@ -1830,6 +1841,7 @@ async function scanSmart(p,address,topics,latest){
       const hit=await scan(alt,address,topics,latest,60000,14);
       if(hit.length){ log("logs came from RPC "+(((rpcIdx+i)%RPCS.length)+1)); return hit; }
     }catch(e){}
+    finally{ alt.destroy?.(); }
   }
   return [];
 }
@@ -1860,7 +1872,11 @@ async function probeLogs(){
       if(logs.length && !topics) log("  topic0 seen: "+logs[0].topics[0].slice(0,18)+"…");
       if(logs.length && topics && topics.length===1)
         log("  owner topic: "+(logs[0].topics[2]||"none")+" · yours: "+pad);
-    }catch(e){ log(`probe: ${label} → refused (${e.shortMessage||e.message})`); }
+    }catch(e){
+      // Deliberately does not call readFail: probing is meant to provoke
+      // refusals, and it should not drag the live connection around with it.
+      log(`probe: ${label} → refused (${e.shortMessage||e.message})`);
+    }
   }
 }
 window.probeLogs = probeLogs;

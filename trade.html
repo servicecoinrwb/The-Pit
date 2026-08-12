@@ -513,11 +513,20 @@ async function batch(p, calls){
   try{
     const mc=new E.Contract(MULTICALL,MC,p);
     const res=await mc.aggregate3(calls.map(c=>({target:c.to,allowFailure:true,callData:c.data})));
-    mcOk=true;
+    if(mcOk===null){ mcOk=true; log(`multicall works — ${calls.length} reads in one request`); }
     return res;
   }catch(e){
-    if(mcOk===null){ mcOk=false; log("no multicall on this chain — reading one at a time"); }
-    return null;
+    // Distinguish "not deployed" from "this request timed out". Giving up on
+    // multicall because one call was slow would leave the page making forty
+    // requests a cycle forever, which is the thing being fixed.
+    const msg=(e.shortMessage||e.message||"");
+    const absent=/call revert|BAD_DATA|could not decode|no contract/i.test(msg);
+    if(absent){
+      if(mcOk===null){ mcOk=false; log("no multicall on this chain — reading one at a time"); }
+      return null;
+    }
+    log("multicall request failed ("+msg+") — falling back for this cycle only");
+    return null;                       // mcOk stays null, so it tries again
   }
 }
 
@@ -597,12 +606,27 @@ function nextRpc(){
    on a bad minute meant cycling all four endpoints in a second and turning
    one failed read into four. It now needs sustained failure and waits for
    the next scheduled refresh rather than forcing one. */
-let readFails = 0, lastRotate = 0;
-function readOk(){ readFails = 0; $("rpcWarn").textContent = ""; }
+let readFails = 0, lastRotate = 0, everLoaded = false;
+function readOk(){ readFails = 0; everLoaded = true; $("rpcWarn").textContent = ""; }
+/* One retry before anything is called a failure. Most of these are the
+   endpoint being slow rather than refusing, and a retry costs one request
+   where a rotation costs a whole re-read against a cold connection. */
+async function retry(fn, tries=2){
+  let last;
+  for(let i=0;i<tries;i++){
+    try{ return await fn(); }
+    catch(e){ last=e; if(i+1<tries) await new Promise(r=>setTimeout(r,700)); }
+  }
+  throw last;
+}
+
 function readFail(what, e){
   log(what+" failed: "+(e.shortMessage||e.message));
   readFails++;
-  $("rpcWarn").textContent = readFails>1 ? `${readFails} reads refused` : "";
+  // Before the first successful cycle this is a page still loading, not a
+  // page that is broken. Saying "refused" then is alarming and wrong.
+  $("rpcWarn").textContent = !everLoaded ? "loading…"
+    : readFails>1 ? `${readFails} reads refused` : "";
   const enough = readFails >= 5;
   const cooled = Date.now() - lastRotate > 60000;
   if (enough && cooled){
@@ -1374,7 +1398,7 @@ async function refresh(){
   const p=provider||rp();
   try{
     const eng=C.eng(p);
-    const packed=await batch(p, MKT.map(m=>({to:A.engine, data:eng.interface.encodeFunctionData("peek",[m.id])})));
+    const packed=await retry(()=>batch(p, MKT.map(m=>({to:A.engine, data:eng.interface.encodeFunctionData("peek",[m.id])}))));
     if(packed){
       MKT.forEach((m,i)=>{
         if(!packed[i].success) return;
@@ -1398,7 +1422,7 @@ async function refresh(){
 
   try{
     const fl=C.floor(p);
-    const mv=await batch(p, MKT.map(m=>({to:A.floorplan, data:fl.interface.encodeFunctionData("marketView",[m.id])})));
+    const mv=await retry(()=>batch(p, MKT.map(m=>({to:A.floorplan, data:fl.interface.encodeFunctionData("marketView",[m.id])}))));
     if(mv){
       MKT.forEach((m,i)=>{
         if(!mv[i].success) return;

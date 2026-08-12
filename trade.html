@@ -348,10 +348,6 @@ tr.danger td{background:rgba(181,81,47,.11)}
   </div>
   <div id="fClosed" class="wrapscroll"></div>
   <div id="fLp" hidden></div>
-</div>
-
-<!-- ── setup and admin ────────────────────────────────────────────── -->
-<div data-panel="admin">
   <div class="sec">
     <h3 class="secH">Test collateral</h3>
     <p class="secP">Chips stands in for USDC because the Arc faucet gives a dollar a day, which cannot
@@ -365,26 +361,79 @@ tr.danger td{background:rgba(181,81,47,.11)}
     <div class="why" id="whyMint"></div>
   </div>
 
-  <div class="sec" id="ownerOnly" hidden>
-    <h3 class="secH">Owner</h3>
+</div>
+
+<!-- ── setup and admin ────────────────────────────────────────────── -->
+<div data-panel="admin">
+  <div class="sec" id="ownerNote">
+    <h3 class="secH">Owner controls</h3>
     <div class="kvrow"><span>Price engine owner</span><b id="aOwner">—</b></div>
+    <p class="secP" id="aOwnerNote"></p>
+  </div>
+
+  <div class="sec" id="ownerOnly" hidden>
+    <h3 class="secH">Markets</h3>
+    <div class="kvrow"><span>Listed on the engine</span><b id="aMkts">—</b></div>
     <div class="kvrow"><span>Funding at full skew</span><b id="aFund">—</b></div>
-    <p class="secP">Funding is what pushes back when the desk piles onto one side and the pool takes the
-    other. A factor of 10000 gives 1% an hour at full skew, which is a real carrying cost; the existing
-    cap holds it there exactly.</p>
+    <p class="secP">Funding is what pushes back when the desk piles onto one side and the pool has to take
+    the other. A factor of 10000 gives 1% an hour at full skew — a real carrying cost. At 100 it comes to
+    0.24% a day, which nobody who is right by 5% would notice.</p>
+    <div class="lprow">
+      <button class="lpbtn ghost" id="aFundFix">Set funding factor to 10000 on all markets</button>
+    </div>
+    <div class="why" id="whyFund"></div>
+
+    <h3 class="secH" style="margin-top:22px">Prices</h3>
+    <p class="secP">Authorising a pusher is what lets the feeder publish. Force push skips the deviation
+    breaker and exists for reopens after a gap — a weekend move can legitimately exceed the limit, and
+    without it the market would stay frozen at the last print before the gap.</p>
     <div class="lprow">
       <input type="text" id="aPusher" placeholder="feeder address">
       <button class="lpbtn ghost" id="aSetPusher">Authorise pusher</button>
     </div>
-    <div class="lprow" style="margin-top:9px">
-      <input type="text" id="aFpId" placeholder="market id" style="width:110px">
-      <input type="text" id="aFpPx" placeholder="price" style="width:150px">
+    <div class="lprow">
+      <input type="text" id="aFpId" placeholder="market id" style="width:120px">
+      <input type="text" id="aFpPx" placeholder="price" style="width:160px">
       <button class="lpbtn ghost" id="aForce">Force push</button>
     </div>
-    <p class="secP" style="margin-top:8px">Force push skips the deviation breaker. For reopens after a
-    gap, and nothing else.</p>
-    <div class="why" id="whyAdmin"></div>
+    <div class="why" id="whyPrice"></div>
+
+    <h3 class="secH" style="margin-top:22px">Halt</h3>
+    <p class="secP">Pausing a market stops opens and closes on it immediately. Pause everything when the
+    feed is publishing numbers you do not trust and you cannot yet tell which market it poisoned.</p>
+    <div class="lprow">
+      <input type="text" id="aPauseId" placeholder="market id" style="width:120px">
+      <button class="lpbtn ghost" id="aPause">Pause</button>
+      <button class="lpbtn ghost" id="aUnpause">Unpause</button>
+      <button class="lpbtn ghost" id="aPauseAll">Pause everything</button>
+    </div>
+    <div class="why" id="whyHalt"></div>
+
+    <h3 class="secH" style="margin-top:22px">The pool</h3>
+    <div class="kvrow"><span>Vault seeded</span><b id="aSeeded">—</b></div>
+    <div class="kvrow"><span>Attached desk</span><b id="aPerp">—</b></div>
+    <div class="kvrow"><span>Proposed desk</span><b id="aPerpProp">—</b></div>
+    <p class="secP">Seeding mints locked shares to a burn address, putting a permanent floor under the
+    share supply — until it runs, an unseeded vault is exactly the state a first-depositor attack needs.
+    <b>Seeded assets can never be withdrawn by anyone.</b> A thousand is plenty; to fund the pool, deposit
+    on the portfolio view instead.</p>
+    <div class="lprow">
+      <input type="text" id="aSeedAmt" placeholder="1000" style="width:140px">
+      <button class="lpbtn ghost" id="aSeed">Approve &amp; seed</button>
+    </div>
+    <p class="secP" style="margin-top:14px">Swapping the desk is the most dangerous action here, because
+    the desk can move money out of the pool. The first wiring is immediate; every change after waits 48
+    hours so depositors who disagree can withdraw first, and it refuses outright while capital is
+    reserved against open positions.</p>
+    <div class="lprow">
+      <input type="text" id="aNewPerp" placeholder="desk address">
+      <button class="lpbtn ghost" id="aSetPerp">Set desk</button>
+      <button class="lpbtn ghost" id="aPropose">Propose change</button>
+      <button class="lpbtn ghost" id="aExec">Execute</button>
+    </div>
+    <div class="why" id="whyPool"></div>
   </div>
+
 
   <div class="sec">
     <h3 class="secH">Contracts</h3>
@@ -459,7 +508,13 @@ const ENG2=["function owner() view returns (address)",
   "function isPusher(address) view returns (bool)",
   "function setPusher(address,bool)",
   "function forcePush(uint256,uint128)",
-  "function markets(uint256) view returns (bool listed,bool paused,bool hasSessions,uint16 maxLeverageX,uint16 maxDeviationBps,uint32 maxStaleness,uint32 fundingFactor,uint32 maxFundingBps,uint128 maxOpenInterest,string symbol)"];
+  "function markets(uint256) view returns (bool listed,bool paused,bool hasSessions,uint16 maxLeverageX,uint16 maxDeviationBps,uint32 maxStaleness,uint32 fundingFactor,uint32 maxFundingBps,uint128 maxOpenInterest,string symbol)",
+  "function configureMarket(uint256,uint16,uint16,uint32,uint32,uint32,uint128)",
+  "function setPaused(uint256,bool)","function pauseAll()"];
+const VAULT=["function initialised() view returns (bool)","function initialise(uint256)",
+  "function perp() view returns (address)","function proposedPerp() view returns (address)",
+  "function perpEta() view returns (uint256)","function setPerp(address)",
+  "function proposePerp(address)","function executePerp()"];
 const ENG=["function peek(uint256) view returns (uint256 value,uint64 updatedAt,uint64 roundId,uint8 s)"];
 const BAL=["function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
 
@@ -1625,6 +1680,10 @@ async function checkOwner(p){
     $("aOwner").textContent = "could not read";
   }
   $("ownerOnly").hidden = !isOwner;
+  $("aOwnerNote").textContent = !me
+    ? "Connect a wallet to see whether you hold the owner key."
+    : isOwner ? "You hold the owner key, so the controls below will go through."
+    : "These controls exist but every one of them reverts from this address. The contracts enforce that, not the page.";
 }
 
 function paintAdmin(){
@@ -1635,31 +1694,7 @@ function paintAdmin(){
   $("ownerOnly").hidden = !isOwner;
 }
 
-(function wireAdmin(){
-  const why=()=>$("whyAdmin");
-  const tx=async(fn,label,w)=>{
-    const n=w||why();
-    try{ n.textContent="Waiting for signature…"; n.className="why";
-      const t=await fn(); await t.wait(); n.textContent=label+" confirmed."; n.className="why ok"; refresh();
-    }catch(e){ n.textContent=e.shortMessage||e.message; n.className="why err"; }
-  };
-  $("aMint").onclick=()=>signer?tx(()=>new E.Contract(A.chips,CHIPS,signer).faucet(),"Mint 100,000",$("whyMint"))
-    :($("whyMint").textContent="Connect a wallet first.",$("whyMint").className="why err");
-  $("aMint5").onclick=()=>signer?tx(()=>new E.Contract(A.chips,CHIPS,signer).mint(me,E.parseUnits("500000",6)),"Mint 500,000",$("whyMint"))
-    :($("whyMint").textContent="Connect a wallet first.",$("whyMint").className="why err");
-  $("aSetPusher").onclick=()=>{
-    if(!signer) return;
-    const a=($("aPusher").value||"").trim();
-    if(!E.isAddress(a)){ why().textContent="Not a valid address."; why().className="why err"; return; }
-    tx(()=>new E.Contract(A.engine,ENG2,signer).setPusher(a,true),"Authorise pusher");
-  };
-  $("aForce").onclick=()=>{
-    if(!signer) return;
-    const id=Number($("aFpId").value||0), px=($("aFpPx").value||"").trim();
-    if(!id||!px){ why().textContent="Market id and price are both required."; why().className="why err"; return; }
-    tx(()=>new E.Contract(A.engine,ENG2,signer).forcePush(id,E.parseUnits(px,18)),"Force push market "+id);
-  };
-})();
+
 
 /* Everything the portfolio and admin views need, read on the same cycle as
    the trading view. One read, three panels — the whole reason for merging
@@ -1680,7 +1715,132 @@ async function paintSide(p){
     }
   }catch(e){}
   await checkOwner(p);
+  if(isOwner) await paintOwnerState(p);
   paintAdmin(); paintFStats(); paintClosed(); paintLp();
+}
+
+
+$("aMint").onclick=()=>adminTx(()=>new E.Contract(A.chips,CHIPS,signer).faucet(),"Mint 100,000","whyMint");
+$("aMint5").onclick=()=>adminTx(()=>new E.Contract(A.chips,CHIPS,signer).mint(me,E.parseUnits("500000",6)),"Mint 500,000","whyMint");
+
+/* ── owner controls ───────────────────────────────────────────────── */
+function whyA(id,msg,kind){ const n=$(id); n.textContent=msg||""; n.className="why"+(kind?" "+kind:""); }
+
+async function adminTx(fn,label,whyId){
+  if(!signer){ whyA(whyId,"Connect a wallet first.","err"); return false; }
+  try{
+    whyA(whyId,"Waiting for signature…");
+    const t=await fn(); whyA(whyId,"Submitted…");
+    await t.wait(); whyA(whyId,label+" confirmed.","ok");
+    await refresh(); return true;
+  }catch(e){ whyA(whyId,e.shortMessage||e.reason||e.message,"err"); return false; }
+}
+
+/* Reads each market's current settings and rewrites only the funding factor.
+   configureMarket takes the whole parameter set, so writing remembered
+   values would silently revert anything changed since. */
+$("aFundFix").onclick=async()=>{
+  if(!signer){ whyA("whyFund","Connect a wallet first.","err"); return; }
+  const rd=new E.Contract(A.engine,ENG2,provider||rp());
+  const wr=new E.Contract(A.engine,ENG2,signer);
+  let done=0, skipped=0;
+  for(const m of MKT){
+    try{
+      const c=await rd.markets(m.id);
+      if(!c.listed) continue;
+      if(Number(c.fundingFactor)===10000){ skipped++; continue; }
+      const ok=await adminTx(()=>wr.configureMarket(m.id,c.maxLeverageX,c.maxDeviationBps,
+        c.maxStaleness,10000,c.maxFundingBps,c.maxOpenInterest), "Funding on "+m.sym, "whyFund");
+      if(!ok) return;
+      done++;
+    }catch(e){ whyA("whyFund",m.sym+": "+(e.shortMessage||e.message),"err"); return; }
+  }
+  whyA("whyFund", done ? `Updated ${done}${skipped?", "+skipped+" already set":""}.`
+                       : "All markets already at 10000.", "ok");
+};
+
+$("aSetPusher").onclick=()=>{
+  const a=($("aPusher").value||"").trim();
+  if(!E.isAddress(a)){ whyA("whyPrice","Not a valid address.","err"); return; }
+  adminTx(()=>new E.Contract(A.engine,ENG2,signer).setPusher(a,true),"Authorise pusher","whyPrice");
+};
+$("aForce").onclick=()=>{
+  const id=Number($("aFpId").value||0), px=($("aFpPx").value||"").trim();
+  if(!id||!px){ whyA("whyPrice","Market id and price are both required.","err"); return; }
+  adminTx(()=>new E.Contract(A.engine,ENG2,signer).forcePush(id,E.parseUnits(px,18)),
+    "Force push market "+id,"whyPrice");
+};
+
+$("aPause").onclick=()=>{
+  const id=Number($("aPauseId").value||0);
+  if(!id){ whyA("whyHalt","Which market?","err"); return; }
+  adminTx(()=>new E.Contract(A.engine,ENG2,signer).setPaused(id,true),"Pause market "+id,"whyHalt");
+};
+$("aUnpause").onclick=()=>{
+  const id=Number($("aPauseId").value||0);
+  if(!id){ whyA("whyHalt","Which market?","err"); return; }
+  adminTx(()=>new E.Contract(A.engine,ENG2,signer).setPaused(id,false),"Unpause market "+id,"whyHalt");
+};
+$("aPauseAll").onclick=()=>
+  adminTx(()=>new E.Contract(A.engine,ENG2,signer).pauseAll(),"Pause every market","whyHalt");
+
+$("aSeed").onclick=async()=>{
+  if(!signer){ whyA("whyPool","Connect a wallet first.","err"); return; }
+  const raw=($("aSeedAmt").value||"").trim();
+  if(!raw){ whyA("whyPool","Enter an amount.","err"); return; }
+  const amt=E.parseUnits(raw,6);
+  const c=new E.Contract(A.chips,CHIPS,signer);
+  if((await c.allowance(me,A.ballast))<amt)
+    if(!await adminTx(()=>c.approve(A.ballast,amt),"Approve "+raw,"whyPool")) return;
+  await adminTx(()=>new E.Contract(A.ballast,VAULT,signer).initialise(amt),"Seed the vault","whyPool");
+};
+
+$("aSetPerp").onclick=()=>{
+  const a=($("aNewPerp").value||"").trim();
+  if(!E.isAddress(a)){ whyA("whyPool","Not a valid address.","err"); return; }
+  adminTx(()=>new E.Contract(A.ballast,VAULT,signer).setPerp(a),"Set the desk","whyPool");
+};
+$("aPropose").onclick=()=>{
+  const a=($("aNewPerp").value||"").trim();
+  if(!E.isAddress(a)){ whyA("whyPool","Not a valid address.","err"); return; }
+  adminTx(()=>new E.Contract(A.ballast,VAULT,signer).proposePerp(a),"Propose desk change","whyPool");
+};
+$("aExec").onclick=()=>
+  adminTx(()=>new E.Contract(A.ballast,VAULT,signer).executePerp(),"Execute desk change","whyPool");
+
+async function paintOwnerState(p){
+  try{
+    const en=new E.Contract(A.engine,ENG2,p);
+    const names=[];
+    for(const m of MKT){
+      try{ const c=await en.markets(m.id); if(c.listed) names.push(c.symbol + (c.paused?" (paused)":"")); }catch{}
+    }
+    $("aMkts").textContent = names.length ? names.join(" · ") : "none";
+    const cfg=await en.markets(MKT[0].id);
+    const f=Number(cfg.fundingFactor);
+    $("aFund").textContent=(f/1e6*100).toFixed(4)+"%/hr · "+(f/1e6*100*24).toFixed(2)+"%/day  (factor "+f+")";
+    $("aFund").className = "" + (f>=10000?"ok":"bad");
+  }catch(e){}
+
+  try{
+    const v=new E.Contract(A.ballast,VAULT,p);
+    const init=await v.initialised();
+    $("aSeeded").textContent = init ? "yes" : "no — deposits are blocked until it is";
+    $("aSeeded").className = init ? "ok" : "bad";
+    const cur=await v.perp();
+    $("aPerp").textContent = cur===E.ZeroAddress ? "none attached" : short(cur);
+    const prop=await v.proposedPerp();
+    if(prop===E.ZeroAddress){ $("aPerpProp").textContent="none"; }
+    else{
+      const eta=Number(await v.perpEta()), now=Math.floor(Date.now()/1000);
+      $("aPerpProp").textContent = short(prop) + (now>=eta ? " · ready now"
+        : ` · in ${Math.floor((eta-now)/3600)}h ${Math.floor(((eta-now)%3600)/60)}m`);
+    }
+    // Set applies only before a desk exists; after that it is propose-and-wait.
+    $("aSetPerp").disabled = cur!==E.ZeroAddress;
+    $("aPropose").disabled = cur===E.ZeroAddress;
+    $("aExec").disabled    = prop===E.ZeroAddress;
+  }catch(e){}
 }
 
 /* ── boot ─────────────────────────────────────────────────────────── */

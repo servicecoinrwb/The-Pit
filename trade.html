@@ -1726,10 +1726,10 @@ async function loadHistory(){
 
     // Sequential, not parallel. Five concurrent walks against one endpoint is
     // how the requests got refused in the first place.
-    const op = await scan(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest);
-    const cl = await scan(p,A.floorplan,[E.id("Closed(uint256,address,uint256,int256,int256,uint256,uint256)"),null,pad],latest);
-    const dp = await scan(p,A.ballast,[E.id("Deposit(address,address,uint256,uint256)"),null,pad],latest);
-    const wd = await scan(p,A.ballast,[E.id("Withdraw(address,address,address,uint256,uint256)"),null,pad],latest);
+    const op = await scanSmart(p,A.floorplan,[E.id("Opened(uint256,address,uint256,bool,uint256,uint256,uint256,uint256)"),null,pad],latest);
+    const cl = await scanSmart(p,A.floorplan,[E.id("Closed(uint256,address,uint256,int256,int256,uint256,uint256)"),null,pad],latest);
+    const dp = await scanSmart(p,A.ballast,[E.id("Deposit(address,address,uint256,uint256)"),null,pad],latest);
+    const wd = await scanSmart(p,A.ballast,[E.id("Withdraw(address,address,address,uint256,uint256)"),null,pad],latest);
 
     const opens=new Map();
     for(const l of op){ try{ const d=iF.parseLog(l);
@@ -1761,10 +1761,22 @@ async function loadHistory(){
   paintClosed(); drawCurve(); paintFStats(); paintLp();
 }
 
-async function scan(p,address,topics,latest,back=1200000){
+/**
+ * Walks a log range backwards in chunks.
+ *
+ * Arc produces a block every half second, so a week is 1.2 million blocks and
+ * covering it takes 240 requests — times four event types, that is nearly a
+ * thousand calls the public endpoints simply refuse. Meanwhile anything that
+ * just happened sits in the very first chunk.
+ *
+ * So this is called in two passes: a shallow one that finds recent activity
+ * in a handful of requests, and a deep one only if the shallow pass came back
+ * empty. Most of the time the second pass never runs.
+ */
+async function scan(p,address,topics,latest,back=1200000,budget=400){
   const out=[]; const floor=Math.max(0,latest-back);
   let from=latest, span=5000, tries=0, refusals=0;
-  while(from>floor && tries<400){
+  while(from>floor && tries<budget){
     const lo=Math.max(floor,from-span);
     try{
       out.push(...await p.getLogs({address,topics,fromBlock:lo,toBlock:from}));
@@ -1777,6 +1789,13 @@ async function scan(p,address,topics,latest,back=1200000){
     }
   }
   return out;
+}
+
+/** Recent first — a deposit made minutes ago needs three requests, not 240. */
+async function scanSmart(p,address,topics,latest){
+  const shallow = await scan(p,address,topics,latest,15000,8);
+  if(shallow.length) return shallow;
+  return scan(p,address,topics,latest,1200000,400);
 }
 
 /* ── portfolio painters ───────────────────────────────────────────── */

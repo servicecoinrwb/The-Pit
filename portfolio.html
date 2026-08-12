@@ -135,7 +135,7 @@ const BAL=["function balanceOf(address) view returns (uint256)",
  "function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
 
 let provider,signer,me,read;
-let trades=[], lp={dep:0n,wd:0n,shares:0n,value:0n}, openRows=[], pool=null, lpMax=0n;
+let trades=[], lp={dep:0n,wd:0n,shares:0n,value:0n}, openRows=[], pool=null, lpMax=0n, openErr=null;
 let scannedTo=0, historyLoaded=false;
 
 /* Closed positions are deleted from contract storage, so events are the only
@@ -409,10 +409,14 @@ function paintTrades(){
 
 function paintOpen(){
   if(!openRows.length){
-    $("tabOpen").innerHTML='<div class="none">Nothing open.</div>'; return;
+    $("tabOpen").innerHTML = openErr
+      ? `<div class="none" style="color:var(--rust)">${openErr}<br>
+         This is a read failure, not an empty account — try the RPC switch on the trading page.</div>`
+      : '<div class="none">Nothing open.</div>';
+    return;
   }
   const rows=openRows.map(r=>`<tr>
-    <td><span class="tag ${r.isLong?"long":"short"}">${r.isLong?"LONG":"SHORT"}</span> ${MKT[r.market]||r.market}</td>
+    <td><span class="tag ${r.isLong?"long":"short"}">${r.isLong?"LONG":"SHORT"}</span> ${MKT[r.market]||("market "+r.market)} <span style="color:var(--mute)">#${r.id}</span></td>
     <td>${n2(r.size,6,0)}</td><td>${n2(r.margin,6)}</td>
     <td>${n2(r.entry,18)}</td><td>${n2(r.mark,18)}</td>
     <td class="${r.pnl>=0n?"ok":"bad"}">${r.pnl>=0n?"+":"-"}${n2(r.pnl<0n?-r.pnl:r.pnl,6)}</td>
@@ -548,20 +552,29 @@ async function refresh(){
       lp.value =lp.shares>0n ? await b.convertToAssets(lp.shares) : 0n;
       lpMax    =await b.maxWithdraw(me);
     }catch(e){}
+    // Every failure here used to be swallowed, so a broken read and an empty
+    // account produced the same "nothing open" — which is indistinguishable
+    // from working correctly and sends you looking in the wrong place.
+    openErr=null;
     try{
       const f=new E.Contract(A.floorplan,FLOOR,p);
       const ids=await f.positionsOf(me);
       openRows=[];
+      let failed=0;
       for(const id of ids){
         try{
           const v=await f.positionView(id); const q=v[0];
           if(q.owner===E.ZeroAddress) continue;
-          openRows.push({market:Number(q.marketId),isLong:q.isLong,size:q.size,margin:q.margin,
-            entry:q.entryPrice,mark:v[1],pnl:v[2],liq:v[6],danger:v[7]});
-        }catch{}
+          openRows.push({id:id.toString(),market:Number(q.marketId),isLong:q.isLong,
+            size:q.size,margin:q.margin,entry:q.entryPrice,mark:v[1],pnl:v[2],
+            liq:v[6],danger:v[7]});
+        }catch(e){ failed++; }
       }
-    }catch(e){}
-    try{ await loadHistory(p); }catch(e){}
+      if(failed) openErr=`${failed} of ${ids.length} positions could not be read — the RPC refused them.`;
+      else if(!ids.length) openErr=null;
+    }catch(e){ openErr="Could not read your positions: "+(e.shortMessage||e.message); }
+    try{ await loadHistory(p); }
+    catch(e){ log && log("history: "+(e.shortMessage||e.message)); }
   }
   paintStats(); drawCurve(); paintTrades(); paintOpen(); paintLp();
   $("foot").textContent = me

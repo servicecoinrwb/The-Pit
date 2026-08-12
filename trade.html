@@ -14,7 +14,7 @@
   --sky:#6fb7e3; --jade:#5fa88a; --rust:#b5512f; --amber:#d9a441;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%} 
+html{-webkit-text-size-adjust:100%}
 body{background:var(--ink);color:var(--paper);
      font:14px/1.5 "IBM Plex Mono",ui-monospace,monospace}
 button,select,input{font-family:inherit}
@@ -175,9 +175,9 @@ tr.danger td{background:rgba(181,81,47,.11)}
 
 <div class="mkts" id="mkts"></div>
 <div class="pending">
-  <span class="pl">Coming with v2</span>
-  <span class="ps">SPX · NAS · WTI · GOLD · SOL · XRP</span>
-  <span class="pn">waiting on the engine that prices more than three markets at once</span>
+  <span class="pl">Feeds</span>
+  <span class="ps">ETH · BTC · SOL · XRP · GOLD cross-checked on two exchanges</span>
+  <span class="pn">US30 · SPX · NAS · WTI run on a single delayed source and say so</span>
 </div>
 <div class="stats" id="stats"></div>
 
@@ -249,12 +249,21 @@ const A = {
   engine   : "0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
   chips    : "0x207A26e236520b41e98098dCd656D453CDA931d6",
   ballast  : "0xEbca733Cc8b2d968C46d1B506718Df7D174E1c07",
-  floorplan: "0x8c41AE112FacD2dbD3055312Ce41A4Da14924909",
+  floorplan: "0xc0A8A08638aEFd0d39c2ad2e775c6DF490d9676B",
 };
 const CHAIN=5042002, CHAIN_HEX="0x4CEF52", SCAN="https://testnet.arcscan.app";
 const RPCS=["https://rpc.blockdaemon.testnet.arc.network","https://arc-testnet.drpc.org",
             "https://rpc.quicknode.testnet.arc.network","https://5042002.rpc.thirdweb.com"];
-const MKT=[{id:1,sym:"ETH",lev:50},{id:2,sym:"BTC",lev:50},{id:3,sym:"US30",lev:20}];
+/* Ordered the way a trader scans them, not by id. Leverage caps mirror what
+   the engine enforces per market — the ticket disables itself past these, but
+   the contract is the thing that actually refuses. */
+const MKT=[
+  {id:1,sym:"ETH", lev:50},{id:2,sym:"BTC", lev:50},
+  {id:8,sym:"SOL", lev:40},{id:9,sym:"XRP", lev:40},
+  {id:7,sym:"GOLD",lev:30},
+  {id:3,sym:"US30",lev:20},{id:4,sym:"SPX", lev:20},
+  {id:5,sym:"NAS", lev:20},{id:6,sym:"WTI", lev:20},
+];
 const STATUS=["Live","Not listed","Paused","No price","Stale","Closed"];
 const TFS=[{k:"1m",s:60},{k:"5m",s:300},{k:"15m",s:900},{k:"1h",s:3600}];
 const E=ethers, $=id=>document.getElementById(id);
@@ -265,9 +274,13 @@ const ERC20=["function balanceOf(address) view returns (uint256)",
 const FLOOR=["function open(uint256,bool,uint256,uint256) returns (uint256)",
   "function close(uint256)","function addMargin(uint256,uint256)",
   "function positionsOf(address) view returns (uint256[])",
-  "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)",
+  "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding,uint256 entryBorrow,uint128 stopLoss,uint128 takeProfit) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)",
   "function marketView(uint256) view returns (uint256 longSize,uint256 shortSize,int256 skew,int256 fundingHourly,int256 cumFunding,uint256 reserved,uint256 price,uint8 status)",
-  "function poolPnl() view returns (int256)"];
+  "function poolPnl() view returns (int256)",
+  "function setTriggers(uint256,uint128,uint128)",
+  "function closePartial(uint256,uint256)",
+  "function executeTrigger(uint256)",
+  "function triggerReady(uint256) view returns (bool ready,bool isStop,uint256 price)"];
 const ENG=["function peek(uint256) view returns (uint256 value,uint64 updatedAt,uint64 roundId,uint8 s)"];
 const BAL=["function stats() view returns (uint256,uint256,uint256,uint256,uint256,uint256,bool,bool)"];
 
@@ -280,7 +293,7 @@ let cur=1, side="long", tf=300, hoverIdx=null;
    market changes — an old window on a new series would be meaningless. */
 let span=110, offset=0, panFrom=null;
 const SPAN_MIN=20, SPAN_MAX=400;
-const series={1:[],2:[],3:[]}, px={}, stat={}, mstate={};
+const series=Object.fromEntries(MKT.map(m=>[m.id,[]])), px={}, stat={}, mstate={};
 let loaded=false, pool=null, poolOwed=null, lastBlock=0, saveTick=0;
 
 function log(m,h){const d=document.createElement("div");

@@ -76,7 +76,16 @@ button,select,input{font-family:inherit}
 /* minmax(0,1fr) rather than 1fr: a grid track defaults to min-content
    width, so a wide chart or a long row of market tabs pushes the whole
    layout out and clips whatever sits to its right. */
-.main{display:grid;grid-template-columns:minmax(0,1fr) 316px;gap:0}
+/* The ticket width is a variable so the grip can move it live. minmax(0,1fr)
+   on the chart column matters: a plain 1fr refuses to shrink below its
+   content, which is how the ticket got pushed off screen when nine market
+   tabs arrived. */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 7px var(--tickw,316px);gap:0}
+.vgrip{cursor:col-resize;background:var(--slab);border-left:1px solid var(--edge);
+       border-right:1px solid var(--edge);display:flex;align-items:center;justify-content:center}
+.vgrip:hover span,.vgrip.dragging span{background:var(--sky)}
+.vgrip span{display:block;width:2px;height:40px;background:var(--edge);border-radius:1px}
+body.vresizing{cursor:col-resize;user-select:none}
 .chartcol{border-right:1px solid var(--edge);min-width:0}
 .tfbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
        padding:8px 14px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
@@ -247,10 +256,11 @@ tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
 #log a{color:var(--sky)}
 
 @media (max-width:1180px){
-  .main{grid-template-columns:minmax(0,1fr) 280px}
+  .main{grid-template-columns:minmax(0,1fr) 7px var(--tickw,280px)}
 }
 @media (max-width:900px){
   .main{grid-template-columns:minmax(0,1fr)}
+  .vgrip{display:none}
   .chartcol{border-right:0;border-bottom:1px solid var(--edge)}
 }
 </style>
@@ -312,6 +322,8 @@ tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
     <div id="thin"></div>
     <div id="chart"></div>
   </div>
+
+  <div class="vgrip" id="vgrip" title="Drag to resize the ticket"><span></span></div>
 
   <div class="ticket">
     <div class="sides">
@@ -578,6 +590,12 @@ let cur=1, side="long", tf=300, hoverIdx=null;
    means pinned to live, which is where it returns whenever the timeframe or
    market changes — an old window on a new series would be meaningless. */
 let span=110, offset=0, panFrom=null;
+/* Vertical scale. Null means auto-fit to the visible candles, which is the
+   right default — you almost always want to see the whole range. Dragging
+   the price axis sets a manual zoom that persists until you double-click it
+   away, so a chart you deliberately stretched does not silently re-fit on
+   the next refresh. */
+let vZoom=null, vDrag=null;
 const SPAN_MIN=20, SPAN_MAX=400;
 const series=Object.fromEntries(MKT.map(m=>[m.id,[]])), px={}, stat={}, mstate={};
 let loaded=false, pool=null, poolOwed=null, lastBlock=0, saveTick=0;
@@ -814,6 +832,13 @@ function drawChart(){
 
   if(hi===lo){hi=lo*1.001;lo=lo*0.999;}
   const pad=(hi-lo)*0.10; lo-=pad; hi+=pad;
+  // A manual scale expands or compresses about the midpoint, so the price
+  // under the middle of the chart stays where it was while the range around
+  // it changes.
+  if(vZoom && vZoom!==1){
+    const mid=(hi+lo)/2, half=(hi-lo)/2/vZoom;
+    lo=mid-half; hi=mid+half;
+  }
   const Y=v=>PT+(hi-v)/(hi-lo)*mainH;
   const Yinv=y=>hi-(y-PT)/mainH*(hi-lo);
 
@@ -939,6 +964,23 @@ function drawChart(){
 
   const svg=document.getElementById("svg");
   if(!svg) return;
+
+  // The price axis is its own drag target. It sits in the right gutter, so
+  // it is a transparent rect over that strip rather than a separate element
+  // — anything laid on top of the SVG would swallow the pan gesture.
+  const axisHit=`<rect x="${(W-PR).toFixed(1)}" y="0" width="${PR}" height="${H}"
+    fill="transparent" style="cursor:ns-resize" id="pxaxis"/>`;
+  svg.insertAdjacentHTML("beforeend", axisHit);
+  const ax=document.getElementById("pxaxis");
+  if(ax){
+    ax.onpointerdown=ev=>{
+      vDrag={y:ev.clientY, z:vZoom||1};
+      ax.setPointerCapture?.(ev.pointerId);
+      ev.stopPropagation(); ev.preventDefault();
+    };
+    ax.ondblclick=ev=>{ vZoom=null; ev.stopPropagation(); drawChart(); };
+  }
+
   const local=ev=>{ const r=svg.getBoundingClientRect();
     return {x:(ev.clientX-r.left)/r.width*W, y:(ev.clientY-r.top)/r.height*H}; };
 
@@ -1028,8 +1070,12 @@ function drawChart(){
 
   const zn=$("zN");
   if(zn){
+    // Worth flagging: a manual vertical scale means the chart is no longer
+    // showing the full range, and a candle running off the top is otherwise
+    // indistinguishable from one that did not happen.
     const covered = cs.length>1 ? dur(cs[cs.length-1].t - cs[0].t) : "";
-    zn.textContent = `${cs.length} of ${all.length}${covered?" · "+covered:""}`;
+    zn.textContent = `${cs.length} of ${all.length}${covered?" · "+covered:""}`
+      + (vZoom ? "  · scale "+vZoom.toFixed(2)+"x (double-click axis to reset)" : "");
   }
 
   showOHLC(cs[hoverIdx!==null?hoverIdx:cs.length-1]);
@@ -2077,6 +2123,54 @@ setChartH(Number(localStorage.getItem(H_KEY)) || Math.min(430, Math.round(innerH
   // Double-click restores the default rather than leaving someone stuck with
   // a two-pixel chart they cannot grab hold of again.
   grip.addEventListener("dblclick", ()=>setChartH(430, true));
+})();
+
+/* Bound once at boot, not inside drawChart — that function runs on every
+   refresh and every interaction, so a window listener registered there
+   accumulates until the tab crawls. */
+addEventListener("pointermove", ev=>{
+  if(!vDrag) return;
+  // Down compresses, up expands — the direction a price scale drags on any
+  // charting package.
+  const f = 1 + (ev.clientY - vDrag.y)/260;
+  vZoom = Math.max(0.15, Math.min(8, vDrag.z * f));
+  drawChart();
+});
+addEventListener("pointerup", ()=>{ vDrag=null; });
+
+/* ── ticket width, dragged and remembered ─────────────────────────── */
+const W_KEY="pit.tickw", W_MIN=240, W_MAX=560;
+function setTickW(px, persist){
+  const w=Math.max(W_MIN, Math.min(W_MAX, Math.round(px)));
+  document.documentElement.style.setProperty("--tickw", w+"px");
+  if(persist){ try{ localStorage.setItem(W_KEY, String(w)); }catch(e){} }
+  drawChart();
+}
+setTickW(Number(localStorage.getItem(W_KEY)) || 316, false);
+
+(function(){
+  const grip=$("vgrip"); let start=null;
+  grip.addEventListener("pointerdown", ev=>{
+    // Dragging left widens the chart, so the delta is inverted: the ticket
+    // grows as the pointer moves toward the left edge.
+    start={x:ev.clientX, w:parseInt(getComputedStyle(document.documentElement)
+      .getPropertyValue("--tickw"))||316};
+    grip.classList.add("dragging"); document.body.classList.add("vresizing");
+    grip.setPointerCapture?.(ev.pointerId);
+    ev.preventDefault();
+  });
+  addEventListener("pointermove", ev=>{
+    if(start) setTickW(start.w - (ev.clientX-start.x), false);
+  });
+  addEventListener("pointerup", ev=>{
+    if(!start) return;
+    setTickW(parseInt(getComputedStyle(document.documentElement)
+      .getPropertyValue("--tickw"))||316, true);
+    start=null;
+    grip.classList.remove("dragging"); document.body.classList.remove("vresizing");
+    grip.releasePointerCapture?.(ev.pointerId);
+  });
+  grip.addEventListener("dblclick", ()=>setTickW(316, true));
 })();
 
 /* ── zoom ─────────────────────────────────────────────────────────── */

@@ -98,8 +98,8 @@ says whether trading here made or lost money.</div>
 <script>
 const A={engine:"0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
          chips:"0x207A26e236520b41e98098dCd656D453CDA931d6",
-         ballast:"0x5De190b7dd6eD5B53596859710E0De1d6613bD68",
-         floorplan:"0x7aF178595B59fF39cB2f2c37185171922a79677C"};
+         ballast:"0xEbca733Cc8b2d968C46d1B506718Df7D174E1c07",
+         floorplan:"0x8c41AE112FacD2dbD3055312Ce41A4Da14924909"};
 const CHAIN=5042002, CHAIN_HEX="0x4CEF52", SCAN="https://testnet.arcscan.app";
 const RPCS=["https://rpc.blockdaemon.testnet.arc.network","https://arc-testnet.drpc.org",
             "https://rpc.quicknode.testnet.arc.network","https://5042002.rpc.thirdweb.com"];
@@ -122,7 +122,7 @@ let scannedTo=0, historyLoaded=false;
    from the middle of that record. Cache what has been read and only scan
    forward from there, so history accumulates instead of being re-derived
    (badly) on every load. */
-const PKEY="pit.portfolio.v2";
+const PKEY="pit.portfolio.v3";
 function cacheKey(){ return PKEY+":"+A.floorplan+":"+(me||"").toLowerCase(); }
 function loadP(){
   try{

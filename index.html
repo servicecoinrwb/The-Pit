@@ -37,9 +37,9 @@ h1 em{font-style:normal;color:var(--sky)}
 .ring.r1{stroke:#2c4364} .ring.r2{stroke:#293e5c} .ring.r3{stroke:#263a55}
 .floor{fill:var(--slab);stroke:var(--edge);stroke-width:1.3}
 .spoke{stroke:var(--edge);stroke-width:1;opacity:.5}
-.mk-sym{font:600 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.12em;fill:var(--mute)}
-.mk-px{font:500 19px "IBM Plex Mono",monospace;fill:var(--paper)}
-.mk-st{font:11px "IBM Plex Mono",monospace}
+.mk-sym{font:600 11px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.12em;fill:var(--mute)}
+.mk-px{font:500 15px "IBM Plex Mono",monospace;fill:var(--paper)}
+.mk-st{font:9.5px "IBM Plex Mono",monospace}
 .st-ok{fill:var(--jade)} .st-warn{fill:var(--amber)} .st-bad{fill:var(--rust)}
 .center-1{font:600 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.2em;fill:var(--mute)}
 .center-2{font:11px "IBM Plex Mono",monospace;fill:#6d829a}
@@ -100,7 +100,7 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
   <div class="hero">
     <div class="eyebrow">Arc testnet · chain 5042002</div>
     <h1>The <em>Pit</em></h1>
-    <p class="tag">Perpetuals with no order book. The pool takes the other side of every trade.</p>
+    <p class="tag">Nine markets, no order book. The pool takes the other side of every trade.</p>
   </div>
 
   <!-- the floor itself: stepped octagon, and nobody standing in it -->
@@ -127,20 +127,50 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
       </g>
 
       <!-- live readouts around the rim -->
-      <g id="mkETH"  transform="translate(150,28)">
+      <g transform="translate(70,22)">
         <text class="mk-sym" x="0" y="0">ETH</text>
-        <text class="mk-px"  x="0" y="24" id="pxETH">—</text>
-        <text class="mk-st"  x="0" y="41" id="stETH">reading chain</text>
+        <text class="mk-px"  x="0" y="21" id="pxETH">—</text>
+        <text class="mk-st"  x="0" y="36" id="stETH">reading chain</text>
       </g>
-      <g id="mkBTC"  transform="translate(560,28)">
+      <g transform="translate(250,22)">
         <text class="mk-sym" x="0" y="0">BTC</text>
-        <text class="mk-px"  x="0" y="24" id="pxBTC">—</text>
-        <text class="mk-st"  x="0" y="41" id="stBTC">reading chain</text>
+        <text class="mk-px"  x="0" y="21" id="pxBTC">—</text>
+        <text class="mk-st"  x="0" y="36" id="stBTC">reading chain</text>
       </g>
-      <g id="mkUS30" transform="translate(355,392)">
+      <g transform="translate(430,22)">
+        <text class="mk-sym" x="0" y="0">SOL</text>
+        <text class="mk-px"  x="0" y="21" id="pxSOL">—</text>
+        <text class="mk-st"  x="0" y="36" id="stSOL">reading chain</text>
+      </g>
+      <g transform="translate(560,22)">
+        <text class="mk-sym" x="0" y="0">XRP</text>
+        <text class="mk-px"  x="0" y="21" id="pxXRP">—</text>
+        <text class="mk-st"  x="0" y="36" id="stXRP">reading chain</text>
+      </g>
+      <g transform="translate(690,22)">
+        <text class="mk-sym" x="0" y="0">GOLD</text>
+        <text class="mk-px"  x="0" y="21" id="pxGOLD">—</text>
+        <text class="mk-st"  x="0" y="36" id="stGOLD">reading chain</text>
+      </g>
+      <g transform="translate(120,392)">
         <text class="mk-sym" x="0" y="0">US30</text>
-        <text class="mk-px"  x="0" y="24" id="pxUS30">—</text>
-        <text class="mk-st"  x="0" y="41" id="stUS30">reading chain</text>
+        <text class="mk-px"  x="0" y="21" id="pxUS30">—</text>
+        <text class="mk-st"  x="0" y="36" id="stUS30">reading chain</text>
+      </g>
+      <g transform="translate(320,392)">
+        <text class="mk-sym" x="0" y="0">SPX</text>
+        <text class="mk-px"  x="0" y="21" id="pxSPX">—</text>
+        <text class="mk-st"  x="0" y="36" id="stSPX">reading chain</text>
+      </g>
+      <g transform="translate(500,392)">
+        <text class="mk-sym" x="0" y="0">NAS</text>
+        <text class="mk-px"  x="0" y="21" id="pxNAS">—</text>
+        <text class="mk-st"  x="0" y="36" id="stNAS">reading chain</text>
+      </g>
+      <g transform="translate(670,392)">
+        <text class="mk-sym" x="0" y="0">WTI</text>
+        <text class="mk-px"  x="0" y="21" id="pxWTI">—</text>
+        <text class="mk-st"  x="0" y="36" id="stWTI">reading chain</text>
       </g>
     </svg>
   </div>
@@ -170,7 +200,7 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
       </div>
       <div class="cell">
         <h3>Two sources must agree</h3>
-        <p>ETH and BTC are checked against a second exchange before publishing. When they disagree, nothing is published and the desk goes quiet. Index futures have no free second source and say so.</p>
+        <p>ETH, BTC, SOL, XRP and gold are checked against a second exchange before publishing. When they disagree, nothing is published and the desk goes quiet. The index and energy futures have no free second source, and the interface says so rather than hiding it.</p>
       </div>
       <div class="cell">
         <h3>Open positions pay rent</h3>
@@ -179,6 +209,18 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
       <div class="cell">
         <h3>Something watches for liquidations</h3>
         <p>Anyone can liquidate an underwater position, but a promise nobody enforces is not a promise. A keeper sweeps every forty-five seconds so the maintenance floor is a real floor.</p>
+      </div>
+      <div class="cell">
+        <h3>Stops live on the chain</h3>
+        <p>A front end cannot close your position for you, so stop losses and take profits are stored with the position itself. Anyone may execute one that has been crossed and takes a small cut for it — that reward is what makes them get serviced rather than merely permitted.</p>
+      </div>
+      <div class="cell">
+        <h3>Take some of it off</h3>
+        <p>Closing part of a position leaves the rest exactly as it was: same entry, same leverage, same liquidation price, funding still accruing from where it already was. Only size and margin shrink.</p>
+      </div>
+      <div class="cell">
+        <h3>Stops beat liquidations</h3>
+        <p>When a position is past both its stop and its maintenance floor, the keeper fires the stop. That returns what is left to the trader; a liquidation would hand most of it to the pool. The instruction wins.</p>
       </div>
     </div>
   </section>
@@ -196,19 +238,22 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
       <p>Closing needs a live price, because settling against a stale one robs whichever side the staleness favours. Margin can always be added, so a position can be defended through a closure even when it cannot be exited.</p>
     </div>
     <div class="cav">
-      <b>US30 runs on delayed, unchecked data.</b>
-      <p>It tracks YM futures from a single free source, typically ten to fifteen minutes behind. Nobody offers a second free Dow feed, so unlike ETH and BTC this price is published without being checked against anything. Anyone holding a real-time terminal knows where the Dow is before this desk does. Academic on a testnet; disqualifying anywhere real.</p>
+      <b>Four markets run on delayed, unchecked data.</b>
+      <p>US30, SPX, NAS and WTI track futures from a single free source, typically ten to fifteen
+      minutes behind. Nobody offers a second free feed for any of them, so unlike the crypto
+      markets these prices are published without being checked against anything. Anyone holding a
+      real-time terminal knows where they are before this desk does. Academic on a testnet;
+      disqualifying anywhere real.</p>
     </div>
     <div class="cav">
-      <b>Three markets today, nine shortly.</b>
-      <p>SPX, NAS, WTI, GOLD, SOL and XRP are wired and waiting on their listing. The engine
-      behind them already handles any number of markets; the earlier one summed unrealised profit
-      across exactly three, so a position on a fourth would have been invisible to the pool's own
-      accounting. Listing them then would have looked like progress while quietly breaking the
-      number depositors rely on.</p>
+      <b>A stop fills where the oracle is, not where you set it.</b>
+      <p>Price gapping straight through a stop fills past it, and that difference is yours. Paying
+      out at the trigger instead would put the gap on the pool, and depositors did not agree to
+      cover the worst moment of someone else's trade. A halted market fires nothing at all, so a
+      weekend gap settles on the reopen rather than at Friday's level.</p>
     </div>
     <div class="cav">
-      <b>A position got permanently stuck, and that is why the contracts changed.</b>
+      <b>A position got permanently stuck, and that is why the desk was rebuilt.</b>
       <p>The first version counted the same reserved capital twice — once in the desk, once in
       the pool — and payouts moved one without the other. Once they disagreed, closing reverted,
       and because liquidation unwinds through the same path, the position could not be liquidated
@@ -255,7 +300,12 @@ const RPCS = [
   "https://5042002.rpc.thirdweb.com",
 ];
 const STATUS = ["live","not listed","paused","no price","stale","closed"];
-const MKT = [{id:1,k:"ETH"},{id:2,k:"BTC"},{id:3,k:"US30"}];
+/* Nine markets around the rim: crypto along the top, the delayed futures
+   along the bottom, so the two feed qualities read as two groups. */
+const MKT = [
+  {id:1,k:"ETH"},{id:2,k:"BTC"},{id:8,k:"SOL"},{id:9,k:"XRP"},{id:7,k:"GOLD"},
+  {id:3,k:"US30"},{id:4,k:"SPX"},{id:5,k:"NAS"},{id:6,k:"WTI"},
+];
 const E = ethers;
 
 const STACK = [

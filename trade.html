@@ -46,6 +46,7 @@ button,select,input{font-family:inherit}
 .mkt .st{font-size:10px;letter-spacing:.05em;text-transform:uppercase;display:block;margin-top:1px}
 .ok{color:var(--jade)} .warn{color:var(--amber)} .bad{color:var(--rust)}
 
+.rpcwarn{font-size:11px;color:var(--amber)}
 .pending{display:flex;align-items:baseline;gap:11px;padding:7px 16px;
          border-bottom:1px solid var(--edge);flex-wrap:wrap;background:rgba(0,0,0,.15)}
 .pending .pl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
@@ -162,6 +163,8 @@ tr.danger td{background:rgba(181,81,47,.11)}
 <div class="top">
   <div class="brand"><a href="index.html">The <span>Pit</span></a></div>
   <div class="topright">
+    <span class="rpcwarn" id="rpcWarn"></span>
+    <button class="pill" id="btnRpc" title="Switch price data endpoint">RPC <span id="rpcN"></span></button>
     <a class="pill" href="portfolio.html">Portfolio</a>
     <a class="pill" href="setup.html">Setup &amp; admin</a>
     <button class="pill" id="btnConnect" style="background:transparent;cursor:pointer">
@@ -173,7 +176,7 @@ tr.danger td{background:rgba(181,81,47,.11)}
 <div class="mkts" id="mkts"></div>
 <div class="pending">
   <span class="pl">Coming with v2</span>
-  <span class="ps">SPX · NAS · GOLD · SOL · XRP · BNB · HYPE</span>
+  <span class="ps">SPX · NAS · WTI · GOLD · SOL · XRP</span>
   <span class="pn">waiting on the engine that prices more than three markets at once</span>
 </div>
 <div class="stats" id="stats"></div>
@@ -297,8 +300,41 @@ function dur(sec){
   return Math.round(h/24)+"d";
 }
 
-function rp(){ return read ||= new E.FallbackProvider(
-  RPCS.map((u,i)=>({provider:new E.JsonRpcProvider(u,CHAIN,{staticNetwork:true}),priority:i+1,stallTimeout:2500,weight:1})),CHAIN); }
+/* A FallbackProvider fans every read out across several endpoints, and this
+   page reads four contracts on a timer — enough to get rate-limited by
+   public RPCs even though the feeder, making one batched call every 30s, is
+   perfectly fine on the same endpoints.
+
+   So: one endpoint at a time, remembered between loads, with a manual way to
+   switch when one goes bad. Fewer, slower requests beat more, faster ones
+   that get refused. */
+let rpcIdx = Number(localStorage.getItem("pit.rpc") || 0) % RPCS.length;
+function rp(){
+  return read ||= new E.JsonRpcProvider(RPCS[rpcIdx], CHAIN,
+    { staticNetwork:true, batchMaxCount:12, batchStallTime:40 });
+}
+function nextRpc(){
+  rpcIdx = (rpcIdx+1) % RPCS.length;
+  localStorage.setItem("pit.rpc", String(rpcIdx));
+  read = null;
+  const n=$("rpcN"); if(n) n.textContent=String(rpcIdx+1);
+  log("switched to RPC "+(rpcIdx+1)+" of "+RPCS.length);
+  refresh();
+}
+
+/* Consecutive read failures usually mean this endpoint is refusing us
+   rather than that the chain is down — the feeder proves the chain is fine.
+   Rotate rather than sit there failing. */
+let readFails = 0;
+function readOk(){ readFails = 0; $("rpcWarn").textContent = ""; }
+function readFail(what, e){
+  log(what+" failed: "+(e.shortMessage||e.message));
+  if (++readFails >= 3){
+    $("rpcWarn").textContent = `RPC ${rpcIdx+1} is refusing reads — switching.`;
+    readFails = 0;
+    nextRpc();
+  }
+}
 const C={chips:p=>new E.Contract(A.chips,ERC20,p),
          floor:p=>new E.Contract(A.floorplan,FLOOR,p),
          eng:p=>new E.Contract(A.engine,ENG,p),
@@ -898,7 +934,8 @@ async function refresh(){
     }
     await history(p);
     paintMkts(); drawChart();
-  }catch(e){ log("Price read failed: "+(e.shortMessage||e.message)); }
+    readOk();
+  }catch(e){ readFail("Price read", e); }
 
   try{
     for(const m of MKT){
@@ -983,7 +1020,12 @@ document.querySelectorAll("[data-ind]").forEach(b=>b.onclick=()=>{
 document.querySelectorAll("[data-draw]").forEach(b=>b.onclick=()=>setMode(b.dataset.draw));
 $("clrAll").onclick=()=>{ draws[cur]=[]; saveDraws(); setMode(null); drawChart(); };
 
-paintMkts(); connect(false); refresh(); setInterval(refresh,15000);
+$("btnRpc").onclick = nextRpc;
+$("rpcN").textContent = String(rpcIdx+1);
+paintMkts(); connect(false); refresh();
+// Prices update every 30s at most, so polling faster only burns request
+// budget on an endpoint that will start refusing.
+setInterval(refresh, 30000);
 let rz; addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(drawChart,150); });
 if(window.ethereum){
   window.ethereum.on?.("accountsChanged",()=>location.reload());

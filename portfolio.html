@@ -150,8 +150,16 @@ const n2=(v,d,p=2)=>Number(E.formatUnits(v,d)).toLocaleString(undefined,{minimum
 const money=v=>v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const short=a=>a.slice(0,6)+"…"+a.slice(-4);
 const sgn=v=>(v>=0?"+":"-")+money(Math.abs(v));
-function rp(){ return read ||= new E.FallbackProvider(
-  RPCS.map((u,i)=>({provider:new E.JsonRpcProvider(u,CHAIN,{staticNetwork:true}),priority:i+1,stallTimeout:2500,weight:1})),CHAIN); }
+/* One endpoint at a time rather than a FallbackProvider fanning every read
+   across four. This page polls several contracts on a timer, which is enough
+   to get rate-limited by public RPCs — the feeder, making one batched call
+   every 30s, stays fine on the same endpoints. Remembered between loads and
+   shared with the other pages. */
+let rpcIdx = Number(localStorage.getItem("pit.rpc") || 0) % RPCS.length;
+function rp(){
+  return read ||= new E.JsonRpcProvider(RPCS[rpcIdx], CHAIN,
+    { staticNetwork:true, batchMaxCount:12, batchStallTime:40 });
+}
 
 /* ── history ──────────────────────────────────────────────────────────
    Closed positions are deleted from contract storage on close, so trade
@@ -447,7 +455,7 @@ async function connect(prompt){
 }
 $("btnConnect").onclick=()=>connect(true);
 
-connect(false); refresh(); setInterval(refresh,30000);
+connect(false); refresh(); setInterval(refresh,60000);
 let rz; addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(drawCurve,150);});
 if(window.ethereum){ window.ethereum.on?.("accountsChanged",()=>location.reload()); }
 </script>

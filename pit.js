@@ -10,6 +10,16 @@ export const CHAIN = 5042002;
 export const CHAIN_HEX = "0x4CEF52";
 export const SCAN = "https://testnet.arcscan.app";
 
+/* The feeder serves the price history.
+   A browser can only record while it is open and focused — background tabs
+   have their timers throttled and closed ones record nothing — so a chart
+   accumulated client-side has holes in it that no charting library can fill.
+   Five hours of a live market became twenty-eight minutes of candles, and
+   reopening the page put 18:45 next to 23:23 with a straight line between.
+   The feeder never sleeps and is already polling, so the series lives there
+   and every viewer sees the same chart. */
+export const FEED = "https://arc-feeder-production.up.railway.app";
+
 export const A = {
   engine:    "0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
   chips:     "0x207A26e236520b41e98098dCd656D453CDA931d6",
@@ -349,6 +359,30 @@ export async function readHistory(who) {
     // are different answers and must not render the same.
     return { stats: null, trades: [], error: e.shortMessage || e.message };
   }
+}
+
+/**
+ * Candles from the feeder, already bucketed.
+ *
+ * Bucketing server-side means two windows cannot disagree about the same
+ * chart, which they can when each one buckets raw prints against its own
+ * clock.
+ */
+export async function fetchCandles(marketId, tf, limit = 1500) {
+  const url = `${FEED}/candles?market=${marketId}&tf=${tf}&limit=${limit}`;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    if (!r.ok) throw new Error("feeder returned " + r.status);
+    const j = await r.json();
+    return { candles: j.candles || [], since: j.since, error: null };
+  } catch (e) {
+    // Reported rather than swallowed: an empty chart and an unreachable
+    // feeder are different problems and must not look the same.
+    return { candles: [], since: null, error: e.name === "AbortError"
+      ? "the feeder did not answer in time" : e.message };
+  } finally { clearTimeout(timer); }
 }
 
 export async function readChips(who) {

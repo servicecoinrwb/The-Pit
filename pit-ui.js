@@ -33,6 +33,7 @@ const S = {
   prices: {}, markets: {}, positions: [], posError: null,
   pool: null, chips: 0n, owner: null,
   history: null, histError: null,
+  candles: {}, feedError: null,
   openDrawer: null,
   loaded: false,
 };
@@ -105,7 +106,9 @@ function paintMarkets() {
 
   $("mkts").querySelectorAll("[data-mkt]").forEach(b => b.onclick = () => {
     S.market = Number(b.dataset.mkt);
-    paintMarkets(); paintStats(); drawChart(); quote();
+    paintMarkets(); paintStats(); quote();
+    loadCandles().then(drawChart);
+    drawChart();
   });
 }
 
@@ -150,6 +153,17 @@ function showOHLC(c) {
     `L <b>${P.money(c.l)}</b> C <b class="${up ? "ok" : "bad"}">${P.money(c.c)}</b>`;
 }
 
+/* Pulled on a change of market or timeframe, and refreshed on the cycle.
+   Keyed by both so switching back does not re-fetch what is already here. */
+async function loadCandles(force) {
+  const key = S.market + ":" + S.tf;
+  if (!force && S.candles[key] && Date.now() - S.candles[key].at < 20000) return;
+  const r = await P.fetchCandles(S.market, S.tf);
+  if (r.error) { S.feedError = r.error; return; }
+  S.feedError = null;
+  S.candles[key] = { at: Date.now(), rows: r.candles, since: r.since };
+}
+
 function drawChart() {
   if (S.view !== "trade") return;
   if (!C.alive()) {
@@ -166,17 +180,24 @@ function drawChart() {
   }
 
   const p = S.prices[S.market];
-  const r = C.draw(S.market, S.tf, p && p.price);
+  const key = S.market + ":" + S.tf;
+  const held = S.candles[key];
+  const r = C.draw(S.market, S.tf, p && p.price, held && held.rows);
   const sym = (P.MARKETS.find(m => m.id === S.market) || {}).sym;
 
   if (!r || r.count < 2) {
-    $("thin").textContent = `Not enough prints yet for ${sym} at this timeframe — ` +
-      `the feed builds the chart as it publishes. Try a shorter timeframe.`;
+    $("thin").textContent = S.feedError
+      ? `The price history service is unreachable (${S.feedError}), so this chart is ` +
+        `showing only what this browser has observed since it was opened.`
+      : `Not enough prints yet for ${sym} at this timeframe — history begins when the ` +
+        `feeder starts. Try a shorter timeframe.`;
     $("zN").textContent = "";
     return;
   }
 
-  $("thin").textContent = r.count < 12
+  $("thin").textContent = S.feedError
+    ? `History service unreachable — showing only what this browser observed.`
+    : r.count < 12
     ? `Only ${r.count} candles here so far. Shorter timeframes show more until it builds up.`
     : "";
   $("zN").textContent = `${r.count} candles${r.span ? " · " + P.dur(r.span) : ""}`;
@@ -764,6 +785,8 @@ async function doRefresh() {
   }
 
   try { S.markets = await P.readMarkets(); } catch (e) { }
+  // Force, because the point of the cycle is to pick up the newest candle.
+  try { await loadCandles(true); } catch (e) { }
 
   if (S.wallet) {
     try {
@@ -808,6 +831,7 @@ export async function boot() {
     S.tf = Number(b.dataset.tf);
     $("tfs").querySelectorAll(".tf").forEach(x =>
       x.classList.toggle("on", Number(x.dataset.tf) === S.tf));
+    loadCandles().then(drawChart);
     drawChart();
   });
 
@@ -928,6 +952,7 @@ export async function boot() {
      reads into that cold state is what failed at load. */
   try { await P.provider().getBlockNumber(); } catch (e) { }
   await doConnect(false);
+  await loadCandles(true);
   await refresh();
   setInterval(refresh, 30000);
 

@@ -143,6 +143,8 @@ html.light rect.dn{fill:var(--paper);stroke:var(--paper);stroke-width:1.1}
 html.light line.up{stroke:var(--paper)}
 html.light line.dn{stroke:var(--paper)}
 .cross{stroke:var(--mute);stroke-width:.7;stroke-dasharray:3 3}
+.brk{stroke:var(--amber);stroke-width:1;stroke-dasharray:2 4;opacity:.65}
+.brklab{font:9.5px "IBM Plex Mono",monospace;fill:var(--amber);opacity:.9}
 .markline{stroke:var(--sky);stroke-width:.8;stroke-dasharray:4 3;opacity:.8}
 .marktag{fill:var(--sky)}
 .marktxt{font:10px "IBM Plex Mono",monospace;fill:var(--ink)}
@@ -733,27 +735,19 @@ function candles(id, secs){
   }
   if(b)out.push(b);
 
-  /* Fill the holes.
-     The x-axis positions candles by index, so a seven-hour outage used to
-     render as one slot wide — three in the afternoon sitting right beside ten
-     at night, with the price line leaping between them. That reads as a
-     violent move rather than as missing data, which is the opposite of what
-     the panel promises.
-     Empty buckets are inserted for the missing time so the gap occupies the
-     width it actually took. They carry no prices and draw as nothing. */
-  const filled=[];
-  for(let i=0;i<out.length;i++){
-    filled.push(out[i]);
-    if(i+1<out.length){
-      const missing=(out[i+1].t-out[i].t)/secs - 1;
-      // Bounded: a feeder down for a week should not add 2,000 blanks and
-      // squeeze the real candles into nothing.
-      const add=Math.min(missing, 40);
-      for(let g=1;g<=add;g++) filled.push({t:out[i].t+g*secs, gap:true, n:0});
-      if(missing>add) filled.push({t:out[i].t+(add+1)*secs, gap:true, n:0, elided:missing-add});
-    }
+  /* Candles sit next to each other regardless of the time between them.
+     This is what every charting package does and it is not a fudge: a stock
+     chart does not render the sixteen hours a market is shut, it puts Friday
+     beside Monday. Spacing the hole honestly was tried and it was worse —
+     seven blank hours in the middle with the real candles crushed to the
+     edges, unreadable and untradeable.
+     Where time was skipped the candle is marked, so the break is visible
+     without costing the whole chart. */
+  for(let i=1;i<out.length;i++){
+    const skipped=(out[i].t-out[i-1].t)/secs - 1;
+    if(skipped>0) out[i].after=skipped;
   }
-  return filled;
+  return out;
 }
 
 /* ── indicator maths ──────────────────────────────────────────────────
@@ -869,8 +863,8 @@ function drawChart(){
   const rsiTop= PT+mainH+16, rsiH = showR ? bodyH-mainH-16 : 0;
 
   // Indicators run on real closes only; a gap has no price to average.
-  const closes=cs.map(c=>c.gap?null:c.c);
-  const real=cs.filter(c=>!c.gap);
+  const closes=cs.map(c=>c.c);
+  const real=cs;
   if(real.length<2){
     box.innerHTML=`<div class="empty">Not enough prints yet for ${sym} at this timeframe.</div>`;
     $("ohlc").textContent=""; $("thin").textContent=""; return;
@@ -946,8 +940,15 @@ function drawChart(){
     grid+=`<text class="ax" x="${x.toFixed(1)}" y="${H-7}" text-anchor="middle">`+
           `${new Date(cs[i].t*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</text>`;
   }
+  let breaks="";
   cs.forEach((c,i)=>{
-    if(c.gap) return;                       // nothing was published here
+    // A dashed rule and a label where the feed stopped. Cheap, and it means
+    // a jump in price cannot be mistaken for a move that actually happened.
+    if(c.after && i>0){
+      const bx=X(i)-cw/2;
+      breaks+=`<line class="brk" x1="${bx.toFixed(1)}" y1="${PT}" x2="${bx.toFixed(1)}" y2="${(H-PB).toFixed(1)}"/>`
+           +  `<text class="brklab" x="${(bx+4).toFixed(1)}" y="${(PT+11)}">no data ${dur(c.after*tf)}</text>`;
+    }
     const k=c.c>=c.o?"up":"dn", x=X(i);
     const yo=Y(c.o),yc=Y(c.c),top=Math.min(yo,yc);
     // A zero-height rect renders as nothing when hollow; keep a visible bar.
@@ -1010,9 +1011,7 @@ function drawChart(){
   }
 
   // The rightmost candle of a scrolled-back window is history, not the mark.
-  const lastReal=[...cs].reverse().find(c=>!c.gap) || real[real.length-1];
-  const allReal=[...all].reverse().find(c=>!c.gap);
-  const mark=atLive ? (allReal?allReal.c:lastReal.c) : lastReal.c;
+  const mark=atLive ? all[all.length-1].c : cs[cs.length-1].c;
   const my=Y(mark);
   let cross="";
   if(hoverIdx!==null&&cs[hoverIdx]) cross=`<line class="cross" x1="${X(hoverIdx).toFixed(1)}" y1="${PT}" x2="${X(hoverIdx).toFixed(1)}" y2="${(H-PB).toFixed(1)}"/>`;
@@ -1020,7 +1019,7 @@ function drawChart(){
 
   box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="svg"
       role="img" aria-label="${sym} candlestick chart">
-    ${grid}${lines}${bodies}${dstr}${rstr}${cross}
+    ${grid}${breaks}${lines}${bodies}${dstr}${rstr}${cross}
     <line class="markline" x1="${X0.toFixed(1)}" y1="${my.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${my.toFixed(1)}"/>
     <rect class="marktag" x="${W-PR+2}" y="${(my-8).toFixed(1)}" width="60" height="16" rx="2"/>
     <text class="marktxt" x="${W-PR+6}" y="${(my+4).toFixed(1)}">${money(mark)}</text>
@@ -1168,7 +1167,7 @@ function drawChart(){
     if(rb) rb.hidden = !vZoom;
   }
 
-  showOHLC(cs[hoverIdx!==null&&!cs[hoverIdx]?.gap ? hoverIdx : cs.lastIndexOf(lastReal)]);
+  showOHLC(cs[hoverIdx!==null?hoverIdx:cs.length-1]);
 }
 
 function showOHLC(c){

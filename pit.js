@@ -13,8 +13,8 @@ export const SCAN = "https://testnet.arcscan.app";
 export const A = {
   engine:    "0xFC3B06a7c12E52D14BE7762800863619Aea533aB",
   chips:     "0x207A26e236520b41e98098dCd656D453CDA931d6",
-  ballast:   "0x8AE1D9c982DE72fDb9039d4bea296ed3a8ea355c",
-  floorplan: "0x6dD48Fc5C03ad3B1D1DBD44E776Cb0BbDA372DE1",
+  ballast:   "0x056C788f75F2b3eb3641bA21De14022E1a476362",
+  floorplan: "0x195dcD8665c4CAF5F1341E03a9AcB182F60a75E2",
   multicall: "0xcA11bde05977b3631167028862bE2a173976CA11",
 };
 
@@ -40,6 +40,7 @@ export const MARKETS = [
   { id: 6, sym: "WTI",  lev: 20 },
 ];
 
+export const RING = 20;   // matches the contract's ring size
 export const STATUS = ["Live", "Not listed", "Paused", "No price", "Stale", "Closed"];
 
 const E = window.ethers;
@@ -67,6 +68,8 @@ const FLOOR_ABI = [
   "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding,uint256 entryBorrow,uint128 stopLoss,uint128 takeProfit) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)",
   "function marketView(uint256) view returns (uint256 longSize,uint256 shortSize,int256 skew,int256 fundingHourly,int256 cumFunding,uint256 reserved,uint256 price,uint8 status)",
   "function poolPnl() view returns (int256)",
+  "function tradeStats(address) view returns (uint256 closed,int256 net,uint256 fees,uint256 wins)",
+  "function recentTrades(address) view returns (tuple(uint32 marketId,bool isLong,uint64 closedAt,uint128 size,uint128 entryPrice,uint128 exitPrice,int128 net)[])",
   "function openFeeBps() view returns (uint256)",
   "function maxProfitBps() view returns (uint256)",
   "function minSize() view returns (uint256)",
@@ -314,6 +317,38 @@ export async function readPool(who) {
     try { out.mine = await v.positionOf(who); } catch (e) { }
   }
   return out;
+}
+
+/**
+ * A trader's closed-trade history, in two calls against the desk.
+ *
+ * This used to be assembled by walking Opened and Closed events, which meant
+ * log queries — and log queries against a public endpoint get rate limited
+ * into silence. The failure was not an error message; it was an empty table
+ * and a page telling someone confidently that they had never closed a
+ * position. The contract keeps the tally now, so a bad connection produces a
+ * visible failure rather than a plausible lie.
+ */
+export async function readHistory(who) {
+  if (!who) return { stats: null, trades: [], error: null };
+  const fl = contract("floor");
+  try {
+    const [closed, net, fees, wins] = await fl.tradeStats(who);
+    const raw = await fl.recentTrades(who);
+    return {
+      stats: { closed: Number(closed), net, fees, wins: Number(wins) },
+      trades: raw.map(t => ({
+        market: Number(t.marketId), isLong: t.isLong,
+        at: Number(t.closedAt), size: t.size,
+        entry: t.entryPrice, exit: t.exitPrice, net: t.net,
+      })),
+      error: null,
+    };
+  } catch (e) {
+    // Reported rather than swallowed. An empty history and an unreadable one
+    // are different answers and must not render the same.
+    return { stats: null, trades: [], error: e.shortMessage || e.message };
+  }
 }
 
 export async function readChips(who) {

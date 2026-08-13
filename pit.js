@@ -2,7 +2,7 @@
    Everything that touches the chain. No rendering, no DOM.
 
    One copy of every address and ABI. Three separate pages each keeping
-   their own copies is how a page spent an afternoon decoding a new
+   their own copies is how a page spent an afternoon decoding a new 
    contract with an old tuple while another page read it correctly.
 */
 

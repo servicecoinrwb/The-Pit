@@ -180,9 +180,16 @@ export function build(box, onCrosshair) {
   return chart;
 }
 
-export function draw(marketId, tf, markPrice) {
+/**
+ * Draws a series that came from the feeder.
+ *
+ * The local bucketing below is kept as a fallback for when the feeder cannot
+ * be reached, but it is a fallback rather than the source: it can only ever
+ * contain what this browser was awake to see.
+ */
+export function draw(marketId, tf, markPrice, supplied) {
   if (!chart || !candleSeries) return null;
-  const cs = candles(marketId, tf);
+  const cs = (supplied && supplied.length >= 2) ? supplied : candles(marketId, tf);
   if (cs.length < 2) return { count: cs.length, span: 0 };
 
   const changed = lastMarket !== marketId || lastTf !== tf;

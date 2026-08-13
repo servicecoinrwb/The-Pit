@@ -18,11 +18,14 @@ export const A = {
   multicall: "0xcA11bde05977b3631167028862bE2a173976CA11",
 };
 
+/* thirdweb is deliberately absent. It answers server-to-server but sends no
+   Access-Control-Allow-Origin for browser requests, so every read from a page
+   fails CORS — and it rate limits on top of that. An endpoint that cannot be
+   called from a browser does not belong in a browser's rotation. */
 const RPCS = [
   "https://rpc.blockdaemon.testnet.arc.network",
   "https://arc-testnet.drpc.org",
   "https://rpc.quicknode.testnet.arc.network",
-  "https://5042002.rpc.thirdweb.com",
 ];
 
 export const MARKETS = [
@@ -100,6 +103,7 @@ const MC_ABI = [
    enough that agreement often never comes — the call then fails with
    "quorum not met" having never reached the chain. */
 let rpcIdx = Number(localStorage.getItem("pit.rpc") || 0) % RPCS.length;
+localStorage.setItem("pit.rpc", String(rpcIdx));
 let _read = null;
 
 export function provider() {
@@ -117,6 +121,36 @@ export function rotateRpc() {
   rpcIdx = (rpcIdx + 1) % RPCS.length;
   localStorage.setItem("pit.rpc", String(rpcIdx));
   _read = null;
+}
+
+/* A dead endpoint is worth stepping past on its own. The manual button is
+   fine when someone is watching; a page left open needs to recover by itself,
+   and CORS in particular never resolves — the endpoint will refuse every
+   request from a browser for as long as it is selected.
+
+   Rotation waits for sustained failure and for a quiet moment, because
+   switching mid-cycle invalidates the provider the current reads are using
+   and that failure rotates again — four endpoints cycled in a second, none of
+   them given a chance to answer. */
+let fails = 0, lastRotate = 0;
+
+export function noteRead(ok, err) {
+  if (ok) { fails = 0; return null; }
+  fails++;
+  const msg = (err?.message || "") + (err?.info ? JSON.stringify(err.info) : "");
+  // CORS and 429 are properties of the endpoint, not of the moment. One is
+  // enough; there is no point waiting for five.
+  const fatal = /CORS|Access-Control|Failed to fetch|429|too many requests/i.test(msg);
+  const enough = fatal || fails >= 4;
+  const cooled = Date.now() - lastRotate > 20000;
+  if (enough && cooled) {
+    lastRotate = Date.now();
+    fails = 0;
+    const from = rpcIdx + 1;
+    rotateRpc();
+    return `RPC ${from} refused (${fatal ? "blocked or rate limited" : "repeated failures"}) — switched to ${rpcIdx + 1}`;
+  }
+  return null;
 }
 
 export const iface = {
@@ -170,9 +204,12 @@ export async function batch(calls) {
 /** Price and status for every market, in one request where possible. */
 export async function readPrices() {
   const out = {};
-  const packed = await batch(MARKETS.map(m => ({
-    to: A.engine, data: iface.engine.encodeFunctionData("peek", [m.id]),
-  })));
+  let packed = null;
+  try {
+    packed = await batch(MARKETS.map(m => ({
+      to: A.engine, data: iface.engine.encodeFunctionData("peek", [m.id]),
+    })));
+  } catch (e) { throw e; }
 
   if (packed) {
     MARKETS.forEach((m, i) => {
@@ -184,12 +221,16 @@ export async function readPrices() {
   }
 
   const en = contract("engine");
+  let anyOk = false, lastErr = null;
   for (const m of MARKETS) {
     try {
       const [value, updatedAt, , s] = await en.peek(m.id);
       out[m.id] = { price: Number(E.formatUnits(value, 18)), at: Number(updatedAt), status: Number(s) };
-    } catch (e) { /* leave it absent rather than guessing */ }
+      anyOk = true;
+    } catch (e) { lastErr = e; }
   }
+  // A cycle where nothing came back at all is the endpoint, not the markets.
+  if (!anyOk && lastErr) throw lastErr;
   return out;
 }
 

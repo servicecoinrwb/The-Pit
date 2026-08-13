@@ -161,7 +161,29 @@ async function loadCandles(force) {
   const r = await P.fetchCandles(S.market, S.tf);
   if (r.error) { S.feedError = r.error; return; }
   S.feedError = null;
-  S.candles[key] = { at: Date.now(), rows: r.candles, since: r.since };
+
+  /* Merged, not replaced.
+     Both sources are real prints from the same engine: this browser has
+     whatever it was awake to observe, the feeder has everything since it last
+     started. Letting whichever arrives second win is why the chart redrew
+     into something completely different a moment after loading — five hours
+     of local history replaced by twenty minutes of the feeder's.
+     Taking the union keeps both, and as the feeder accumulates it becomes the
+     whole series on its own. */
+  const local = C.candles(S.market, S.tf);
+  const byTime = new Map();
+  for (const c of local) byTime.set(c.t, c);
+  // The feeder's bucket wins on a collision: it saw every push, where a
+  // browser may have caught one print out of the two in that bucket.
+  for (const c of r.candles) byTime.set(c.t, c);
+
+  S.candles[key] = {
+    at: Date.now(),
+    rows: [...byTime.values()].sort((a, b) => a.t - b.t),
+    since: r.since,
+    fromFeed: r.candles.length,
+    fromLocal: local.length,
+  };
 }
 
 function drawChart() {
@@ -200,7 +222,13 @@ function drawChart() {
     : r.count < 12
     ? `Only ${r.count} candles here so far. Shorter timeframes show more until it builds up.`
     : "";
-  $("zN").textContent = `${r.count} candles${r.span ? " · " + P.dur(r.span) : ""}`;
+  // Say where the candles came from. Two silent sources for one chart is how
+  // it came to redraw into something different a second after loading.
+  const src = held
+    ? (held.fromFeed ? `${held.fromFeed} from the feed` : "local only")
+      + (held.fromLocal > held.fromFeed ? ` · ${held.fromLocal} local` : "")
+    : "local only";
+  $("zN").textContent = `${r.count} candles${r.span ? " · " + P.dur(r.span) : ""} · ${src}`;
 
   C.markPositions(S.positions, S.market, v => Number(E.formatUnits(v, 18)));
   D.setMarket(S.market);

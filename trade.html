@@ -302,6 +302,7 @@ tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
           <button class="tf" id="zOut" title="Show more candles">−</button>
           <button class="tf" id="zIn"  title="Show fewer candles">+</button>
           <button class="tf" id="zFit" title="Fit everything there is">Fit</button>
+          <button class="tf" id="zReset" title="Return the price scale to automatic" hidden>Auto scale</button>
           <span class="zn" id="zN"></span>
         </div>
       </div>
@@ -852,10 +853,15 @@ function drawChart(){
 
   const IDEAL=17, GAP=0.62;
   const full=W-PL-PR;
-  const cw=Math.min(full/cs.length, IDEAL*2.2);
-  const plotW=cw*cs.length;
-  const X0=PL+(full-plotW);
-  const bw=Math.max(1.5, Math.min(cw*GAP, 34));
+  /* Fill the width, then cap the body — not the other way round. Capping the
+     slot left six candles huddled in a corner with four fifths of the chart
+     empty, which looks broken rather than tidy. The slot always spans the
+     plot; only the drawn body is limited, so a handful of candles spread out
+     with air between them instead of bunching at the edge. */
+  const cw = full/cs.length;
+  const plotW=full;
+  const X0=PL;
+  const bw=Math.max(1.5, Math.min(cw*GAP, 46));
   const X=i=>X0+i*cw+cw/2;
 
   // Time <-> pixel, via candle index so it stays correct across timeframes.
@@ -987,7 +993,9 @@ function drawChart(){
   const ax=document.getElementById("pxaxis");
   if(ax){
     ax.onpointerdown=ev=>{
-      vDrag={y:ev.clientY, z:vZoom||1};
+      // Records the starting point; vZoom is only set once the pointer has
+      // actually travelled, so a click on the axis cannot silently rescale.
+      vDrag={y:ev.clientY, z:vZoom||1, moved:false};
       ax.setPointerCapture?.(ev.pointerId);
       ev.stopPropagation(); ev.preventDefault();
     };
@@ -1100,7 +1108,11 @@ function drawChart(){
     // indistinguishable from one that did not happen.
     const covered = cs.length>1 ? dur(cs[cs.length-1].t - cs[0].t) : "";
     zn.textContent = `${cs.length} of ${all.length}${covered?" · "+covered:""}`
-      + (vZoom ? "  · scale "+vZoom.toFixed(2)+"x (double-click axis to reset)" : "");
+      + (vZoom ? "  · scale "+vZoom.toFixed(2)+"x" : "");
+    // A sticky manual scale with only a double-click to undo it is a trap:
+    // one stray drag and the chart looks broken with no obvious way back.
+    const rb=$("zReset");
+    if(rb) rb.hidden = !vZoom;
   }
 
   showOHLC(cs[hoverIdx!==null?hoverIdx:cs.length-1]);
@@ -2375,10 +2387,12 @@ setChartH(Number(localStorage.getItem(H_KEY)) || Math.min(430, Math.round(innerH
    accumulates until the tab crawls. */
 addEventListener("pointermove", ev=>{
   if(!vDrag) return;
+  const dy = ev.clientY - vDrag.y;
+  if(!vDrag.moved && Math.abs(dy) < 4) return;   // ignore a click
+  vDrag.moved = true;
   // Down compresses, up expands — the direction a price scale drags on any
   // charting package.
-  const f = 1 + (ev.clientY - vDrag.y)/260;
-  vZoom = Math.max(0.15, Math.min(8, vDrag.z * f));
+  vZoom = Math.max(0.15, Math.min(8, vDrag.z * (1 + dy/260)));
   drawChart();
 });
 addEventListener("pointermove", ev=>{
@@ -2437,7 +2451,8 @@ function setSpan(next, anchorRight){
 }
 $("zIn").onclick  = ()=>setSpan(span/1.4, true);
 $("zOut").onclick = ()=>setSpan(span*1.4, true);
-$("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; drawChart(); };
+$("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; vZoom=null; drawChart(); };
+$("zReset").onclick = ()=>{ vZoom=null; drawChart(); };
 
 /* ── theme ────────────────────────────────────────────────────────── */
 (function(){

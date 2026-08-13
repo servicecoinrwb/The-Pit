@@ -276,4 +276,13 @@ export function markPositions(rows, marketId, fmtUnits) {
 }
 
 export function fit() { chart && chart.timeScale().fitContent(); }
+export function raw() { return { chart, series: candleSeries }; }
+
+/* The drawing layer projects from time and price to pixels, so it has to
+   redraw whenever the visible range moves — pan, zoom, or a new candle. */
+export function onViewChange(fn) {
+  if (!chart) return;
+  chart.timeScale().subscribeVisibleTimeRangeChange(fn);
+  chart.subscribeCrosshairMove(() => {});   // keeps the handler list warm
+}
 export function alive() { return !!chart; }

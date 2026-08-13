@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Pit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a1420; --slab:#101d2e; --panel:#16263f; --edge:#22364f;
+  --paper:#f5efe3; --mute:#8ba3bd; --dim:#5d7f9a;
+  --sky:#6fb7e3; --jade:#5fa88a; --rust:#b5512f; --amber:#d9a441;
+}
+/* A paper theme rather than an inverted dark one. The greens and reds are
+   darkened separately — the jade that reads clearly on near-black washes out
+   on white, and a candle whose colour you cannot tell is worse than none. */
+html.light{
+  --ink:#f7f4ee; --slab:#ffffff; --panel:#eee9df; --edge:#d6cec1;
+  --paper:#1a2230; --mute:#6a7482; --dim:#8d95a1;
+  --sky:#1d6fa8; --jade:#2f7d5c; --rust:#a8391b; --amber:#8a6512;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--ink);color:var(--paper);
+     font:14px/1.5 "IBM Plex Mono",ui-monospace,monospace}
+button,select,input{font-family:inherit}
+a{color:var(--sky)}
+.ok{color:var(--jade)} .bad{color:var(--rust)} .warn{color:var(--amber)}
+
+/* ── top bar ─────────────────────────────────────── */
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px;
+     padding:11px 16px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.brand{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:19px;
+       letter-spacing:.02em;text-transform:uppercase}
+.brand span{color:var(--sky)}
+.topright{display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}
+.pill{border:1px solid var(--edge);border-radius:2px;padding:6px 11px;color:var(--mute);
+      background:transparent;cursor:pointer;font:inherit;font-size:12px;
+      display:inline-flex;align-items:center;gap:7px}
+.pill:hover{border-color:var(--sky);color:var(--paper)}
+.pill.on{border-color:var(--sky);color:var(--sky);
+         background:color-mix(in srgb, var(--sky) 12%, transparent)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--rust);flex:none}
+.dot.on{background:var(--jade)}
+.rpcwarn{font-size:11px;color:var(--amber)}
+
+[data-panel]{display:none}
+[data-panel].on{display:block}
+
+/* ── market tabs and stats ───────────────────────── */
+.mkts{display:flex;border-bottom:1px solid var(--edge);overflow-x:auto;scrollbar-width:thin}
+.mkt{background:transparent;border:0;border-right:1px solid var(--edge);
+     border-bottom:2px solid transparent;padding:9px 13px;cursor:pointer;text-align:left;
+     color:var(--mute);white-space:nowrap;min-width:104px;flex:none}
+.mkt:hover{background:var(--slab)}
+.mkt.on{border-bottom-color:var(--sky);background:var(--slab);color:var(--paper)}
+.mkt .s{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
+        letter-spacing:.1em;text-transform:uppercase;display:block}
+.mkt .p{font-size:14px;font-variant-numeric:tabular-nums;display:block;margin-top:2px}
+.mkt .st{font-size:10px;letter-spacing:.05em;text-transform:uppercase;display:block;margin-top:1px}
+
+.feeds{display:flex;align-items:baseline;gap:11px;padding:7px 16px;
+       border-bottom:1px solid var(--edge);flex-wrap:wrap;background:var(--panel)}
+.feeds .fl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
+.feeds .fs{font-size:12px;color:var(--dim)}
+.feeds .fn{font-size:11px;color:var(--mute);opacity:.8}
+
+.stats{display:flex;border-bottom:1px solid var(--edge);overflow-x:auto}
+.stat{padding:9px 16px;border-right:1px solid var(--edge);white-space:nowrap;flex:none}
+.stat .k{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);display:block}
+.stat .v{font-size:15px;font-variant-numeric:tabular-nums;display:block;margin-top:1px}
+.stat .s{font-size:10.5px;color:var(--mute);display:block;margin-top:1px}
+
+/* ── main grid ───────────────────────────────────── */
+/* minmax(0,1fr) rather than 1fr: a grid track defaults to min-content width,
+   so nine market tabs used to push the ticket clean off the screen. */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 7px var(--tickw,316px);gap:0}
+.vgrip{cursor:col-resize;background:var(--slab);border-left:1px solid var(--edge);
+       border-right:1px solid var(--edge);display:flex;align-items:center;justify-content:center}
+.vgrip:hover span,.vgrip.dragging span{background:var(--sky)}
+.vgrip span{display:block;width:2px;height:40px;background:var(--edge);border-radius:1px}
+.grip{height:9px;cursor:row-resize;background:var(--slab);border-top:1px solid var(--edge);
+      border-bottom:1px solid var(--edge);display:flex;align-items:center;justify-content:center}
+.grip:hover span,.grip.dragging span{background:var(--sky)}
+.grip span{display:block;width:44px;height:2px;background:var(--edge);border-radius:1px}
+body.resizing{cursor:row-resize;user-select:none}
+body.vresizing{cursor:col-resize;user-select:none}
+.chartcol{border-right:1px solid var(--edge);min-width:0}
+.tfbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+       padding:8px 14px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.tfs{display:flex;gap:5px}
+.tf{background:transparent;border:1px solid var(--edge);color:var(--mute);
+    padding:4px 10px;font-size:11px;cursor:pointer;border-radius:2px;letter-spacing:.06em}
+.tf.on{background:var(--sky);color:var(--ink);border-color:var(--sky)}
+.ohlc{font-size:11.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+.ohlc b{color:var(--paper);font-weight:500}
+.zoomctl{display:flex;align-items:center;gap:5px}
+.zn{font-size:10.5px;color:var(--mute);white-space:nowrap}
+.tools{display:flex;align-items:center;gap:5px;padding:7px 14px;
+       border-bottom:1px solid var(--edge);flex-wrap:wrap}
+.tools .tl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
+#thin{padding:6px 14px;font-size:11.5px;color:var(--mute);line-height:1.5}
+#chart{height:var(--charth,470px);position:relative}
+/* The drawing layer sits over the chart and only takes pointer events while
+   a tool is armed, so panning still works when nothing is selected. */
+.drawlayer{position:absolute;inset:0;pointer-events:none;z-index:3}
+.dl{stroke:var(--sky);stroke-width:1.3;fill:none}
+.dl.h{stroke-dasharray:5 4}
+.dr{stroke:var(--sky);stroke-width:1.2;fill:var(--sky);fill-opacity:.08}
+.dp{fill:var(--sky)}
+.dlab{font:10px "IBM Plex Mono",monospace;fill:var(--sky)}
+.sep{width:1px;height:18px;background:var(--edge);margin:0 6px}
+.drawhint{font-size:11px;color:var(--amber)}
+
+/* ── ticket ──────────────────────────────────────── */
+.ticket{padding:14px}
+.sides{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
+.side{background:transparent;border:1px solid var(--edge);color:var(--mute);
+      padding:10px;cursor:pointer;border-radius:2px;
+      font:600 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.08em;text-transform:uppercase}
+.side.on.long{background:var(--jade);color:var(--ink);border-color:var(--jade)}
+.side.on.short{background:var(--rust);color:var(--paper);border-color:var(--rust)}
+label{display:block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+      color:var(--mute);margin:11px 0 4px}
+input[type=text]{width:100%;background:var(--ink);color:var(--paper);border:1px solid var(--edge);
+                 border-radius:2px;padding:9px 10px;font-size:14px}
+input:focus{outline:none;border-color:var(--sky)}
+.levs{display:flex;gap:5px;margin-top:7px}
+.lv{flex:1;background:transparent;border:1px solid var(--edge);color:var(--mute);
+    padding:5px 0;font-size:11px;cursor:pointer;border-radius:2px}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:4px 0;
+    border-bottom:1px dotted var(--edge)}
+.kv .k{color:var(--mute)} .kv .v{font-variant-numeric:tabular-nums;text-align:right}
+.go{width:100%;margin-top:13px;padding:13px;border:0;border-radius:2px;cursor:pointer;
+    font:700 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.1em;text-transform:uppercase;
+    background:var(--sky);color:var(--ink)}
+.go:disabled{cursor:not-allowed}
+.why{font-size:11.5px;margin-top:9px;line-height:1.5;color:var(--amber)}
+.why.err{color:var(--rust)} .why.ok{color:var(--jade)}
+
+/* ── tables ──────────────────────────────────────── */
+.below{border-top:1px solid var(--edge)}
+.tabs{display:flex;border-bottom:1px solid var(--edge)}
+.tb{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--mute);
+    padding:10px 16px;cursor:pointer;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.tb.on{color:var(--paper);border-bottom-color:var(--sky)}
+.wrapscroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);
+   padding:9px 12px;border-bottom:1px solid var(--edge);font-weight:400;white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--edge);
+   font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
+.tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:10px;
+     letter-spacing:.07em;padding:2px 6px;border-radius:2px;color:var(--ink)}
+.tag.long{background:var(--jade)} .tag.short{background:var(--rust);color:var(--paper)}
+.mini{background:transparent;border:1px solid var(--edge);color:var(--sky);
+      padding:5px 10px;font-size:11px;cursor:pointer;border-radius:2px}
+.mini:hover{border-color:var(--sky)}
+.none{padding:34px 16px;text-align:center;color:var(--mute);font-size:12.5px;line-height:1.8}
+#log{padding:10px 14px;font-size:11.5px;color:var(--mute);max-height:200px;overflow:auto}
+#log div{padding:2px 0;border-bottom:1px dotted var(--edge);word-break:break-all}
+
+/* ── manage drawer ───────────────────────────────── */
+/* The drawer lives inside a <td>, which inherits nowrap from the table rule —
+   so its paragraphs rendered as single unwrapped lines and overlapped. */
+.mgrcell{white-space:normal!important;background:var(--ink);padding:16px 14px!important}
+.mgr{display:grid;grid-template-columns:1fr 1fr;gap:28px;white-space:normal}
+.mgrcol{min-width:0}
+.mgrhead{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
+         letter-spacing:.1em;text-transform:uppercase;color:var(--paper);margin-bottom:8px;
+         padding-bottom:6px;border-bottom:1px solid var(--edge)}
+.mgrnote{font-size:11.5px;color:var(--mute);line-height:1.65;margin-bottom:12px;max-width:52ch}
+.mgrnote b{color:var(--paper);font-weight:500}
+.mgrrow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px}
+.mgrrow label{margin:0}
+.mgrrow input{width:150px;margin-top:4px;background:var(--slab);color:var(--paper);
+              border:1px solid var(--edge);border-radius:2px;padding:8px 10px;
+              font:13px "IBM Plex Mono",monospace}
+
+/* ── sections ────────────────────────────────────── */
+.sec{border-top:1px solid var(--edge);padding:18px 16px}
+.sec:first-child{border-top:0}
+.secH{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:9px}
+.secP{font-size:12px;color:var(--mute);line-height:1.65;max-width:80ch;margin-bottom:13px}
+.kvrow{display:flex;justify-content:space-between;align-items:baseline;gap:18px;
+       padding:8px 0;border-bottom:1px dotted var(--edge);font-size:13px}
+.kvrow:last-of-type{border-bottom:0}
+.kvrow span{color:var(--mute)}
+.kvrow b{font-weight:400;font-variant-numeric:tabular-nums;text-align:right}
+.lprow{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.lprow input{background:var(--ink);color:var(--paper);border:1px solid var(--edge);
+             border-radius:2px;padding:9px 11px;font:13px "IBM Plex Mono",monospace;width:200px}
+.lpbtn{background:var(--sky);color:var(--ink);border:0;border-radius:2px;padding:10px 15px;
+       cursor:pointer;font:600 12px "IBM Plex Sans Condensed",sans-serif;
+       letter-spacing:.07em;text-transform:uppercase}
+.lpbtn:hover{filter:brightness(1.12)}
+.lpbtn.ghost{background:transparent;color:var(--sky);border:1px solid var(--edge)}
+
+@media (max-width:1180px){ .main{grid-template-columns:minmax(0,1fr) 280px} }
+@media (max-width:900px){
+  .main{grid-template-columns:minmax(0,1fr)}
+  .vgrip{display:none}
+  .chartcol{border-right:0;border-bottom:1px solid var(--edge)}
+  .mgr{grid-template-columns:1fr;gap:22px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">The <span>Pit</span></div>
+  <div class="topright">
+    <span class="rpcwarn" id="rpcWarn"></span>
+    <button class="pill" id="btnTheme" title="Light or dark">☾</button>
+    <button class="pill" id="btnRpc" title="Switch price endpoint">RPC <span id="rpcN"></span></button>
+    <button class="pill on" data-view="trade">Trade</button>
+    <button class="pill" data-view="folio">Portfolio</button>
+    <button class="pill" data-view="admin">Setup</button>
+    <button class="pill" id="btnConnect"><span class="dot" id="dot"></span><span id="who">Connect</span></button>
+  </div>
+</div>
+
+<!-- ── trade ──────────────────────────────────────────────────────── -->
+<div data-panel="trade" class="on">
+  <div class="mkts" id="mkts"></div>
+  <div class="feeds">
+    <span class="fl">Feeds</span>
+    <span class="fs">ETH · BTC · SOL · XRP · GOLD cross-checked on two exchanges</span>
+    <span class="fn">US30 · SPX · NAS · WTI run on a single delayed source and say so</span>
+  </div>
+  <div class="stats" id="stats"></div>
+
+  <div class="main">
+    <div class="chartcol">
+      <div class="tfbar">
+        <div class="tfs" id="tfs"></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="ohlc" id="ohlc"></div>
+          <div class="zoomctl">
+            <button class="tf" id="zFit" title="Fit everything to the window">Fit</button>
+            <span class="zn" id="zN"></span>
+          </div>
+        </div>
+      </div>
+      <div class="tools">
+        <span class="tl">Indicators</span>
+        <button class="tf" data-ind="ma20">MA20</button>
+        <button class="tf" data-ind="ma50">MA50</button>
+        <button class="tf" data-ind="bb">Bollinger</button>
+        <span class="sep"></span>
+        <span class="tl">Draw</span>
+        <button class="tf" data-draw="h">Level</button>
+        <button class="tf" data-draw="t">Trend</button>
+        <button class="tf" data-draw="r">Box</button>
+        <button class="tf" data-draw="e">Erase</button>
+        <button class="tf" id="clrDraw">Clear</button>
+        <span class="drawhint" id="drawhint"></span>
+        <span class="tl" style="margin-left:auto;color:var(--dim);text-transform:none;letter-spacing:0">
+          Scroll to zoom · drag to pan</span>
+      </div>
+      <div id="thin"></div>
+      <div id="chart"></div>
+    </div>
+
+  <div class="vgrip" id="vgrip" title="Drag to resize the ticket"><span></span></div>
+
+    <div class="ticket">
+      <div class="sides">
+        <button class="side long on" data-side="long">Long</button>
+        <button class="side short" data-side="short">Short</button>
+      </div>
+      <label for="fSize">Size (CHIP)</label>
+      <input type="text" id="fSize" value="1000" inputmode="decimal">
+      <label for="fMargin">Margin (CHIP)</label>
+      <input type="text" id="fMargin" value="100" inputmode="decimal">
+      <div class="levs" id="levs"></div>
+      <div style="margin-top:14px">
+        <div class="kv"><span class="k">Entry</span><span class="v" id="qEntry">—</span></div>
+        <div class="kv"><span class="k">Leverage</span><span class="v" id="qLev">—</span></div>
+        <div class="kv"><span class="k">Liquidation</span><span class="v" id="qLiq">—</span></div>
+        <div class="kv"><span class="k">Open fee</span><span class="v" id="qFee">—</span></div>
+        <div class="kv"><span class="k">Profit stops at</span><span class="v" id="qCap">—</span></div>
+        <div class="kv"><span class="k">Price move to reach it</span><span class="v" id="qCapMove">—</span></div>
+      </div>
+      <button class="go" id="btnGo">Open long</button>
+      <div class="why" id="note"></div>
+    </div>
+  </div>
+
+  <div class="grip" id="grip" title="Drag to resize the chart"><span></span></div>
+
+  <div class="below">
+    <div class="tabs">
+      <button class="tb on" data-tab="pos">Positions</button>
+      <button class="tb" data-tab="desk">Desk</button>
+      <button class="tb" data-tab="log">Activity</button>
+    </div>
+    <div id="tabPos" class="wrapscroll"></div>
+    <div id="tabDesk" class="wrapscroll" hidden></div>
+    <div id="tabLog" hidden><div id="log"></div></div>
+  </div>
+</div>
+
+<!-- ── portfolio ──────────────────────────────────────────────────── -->
+<div data-panel="folio">
+  <div class="stats" id="fStats"></div>
+  <div id="fPool"></div>
+</div>
+
+<!-- ── setup ──────────────────────────────────────────────────────── -->
+<div data-panel="admin">
+  <div class="sec">
+    <h3 class="secH">Owner</h3>
+    <div class="kvrow"><span>Price engine owner</span><b id="aOwner">—</b></div>
+    <p class="secP" id="aOwnerNote"></p>
+  </div>
+
+  <div class="sec" id="ownerOnly" hidden>
+    <h3 class="secH">Prices</h3>
+    <p class="secP">Authorising a pusher is what lets the feeder publish. Force push skips the
+      deviation breaker and exists for reopens after a gap — a weekend move can legitimately exceed
+      the limit, and without it the market would stay frozen at the last print before it.</p>
+    <div class="lprow">
+      <input type="text" id="aPusher" placeholder="feeder address">
+      <button class="lpbtn ghost" id="aSetPusher">Authorise pusher</button>
+    </div>
+    <div class="lprow">
+      <input type="text" id="aFpId" placeholder="market id" style="width:120px">
+      <input type="text" id="aFpPx" placeholder="price" style="width:160px">
+      <button class="lpbtn ghost" id="aForce">Force push</button>
+    </div>
+
+    <h3 class="secH" style="margin-top:22px">Halt</h3>
+    <p class="secP">Pausing a market stops opens and closes on it immediately. Pause everything when
+      the feed is publishing numbers you do not trust and you cannot yet tell which market it
+      poisoned.</p>
+    <div class="lprow">
+      <input type="text" id="aPauseId" placeholder="market id" style="width:120px">
+      <button class="lpbtn ghost" id="aPause">Pause</button>
+      <button class="lpbtn ghost" id="aUnpause">Unpause</button>
+      <button class="lpbtn ghost" id="aPauseAll">Pause everything</button>
+    </div>
+    <div class="why" id="whyAdmin"></div>
+  </div>
+
+  <div class="sec">
+    <h3 class="secH">Contracts</h3>
+    <div id="aAddrs"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script type="module">
+  import { boot } from "./pit-ui.js";
+  boot();
+</script>
+</body>
+</html>

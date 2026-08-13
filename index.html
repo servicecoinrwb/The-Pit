@@ -1,331 +1,322 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<link rel="icon" href="data:,">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Pit</title>
+<link rel="icon" href="data:,">
+<title>The Pit — a pool-backed perp desk on Arc</title>
+<meta name="description" content="Nine markets, no order book. The pool takes the other side of every trade.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#0a1420; --slab:#101d2e; --panel:#16263f; --edge:#22364f;
+  --ink:#0a1420; --slab:#16263f; --edge:#22364f;
   --paper:#f5efe3; --mute:#8ba3bd; --dim:#5d7f9a;
   --sky:#6fb7e3; --jade:#5fa88a; --rust:#b5512f; --amber:#d9a441;
 }
-/* A paper theme rather than an inverted dark one. The greens and reds are
-   darkened separately — the jade that reads clearly on near-black washes out
-   on white, and a candle whose colour you cannot tell is worse than none. */
-html.light{
-  --ink:#f7f4ee; --slab:#ffffff; --panel:#eee9df; --edge:#d6cec1;
-  --paper:#1a2230; --mute:#6a7482; --dim:#8d95a1;
-  --sky:#1d6fa8; --jade:#2f7d5c; --rust:#a8391b; --amber:#8a6512;
-}
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
 body{background:var(--ink);color:var(--paper);
-     font:14px/1.5 "IBM Plex Mono",ui-monospace,monospace}
-button,select,input{font-family:inherit}
+     font:15px/1.6 "IBM Plex Mono",ui-monospace,monospace;overflow-x:hidden}
+.wrap{max-width:900px;margin:0 auto;padding:0 20px}
 a{color:var(--sky)}
-.ok{color:var(--jade)} .bad{color:var(--rust)} .warn{color:var(--amber)}
 
-/* ── top bar ─────────────────────────────────────── */
-.top{display:flex;align-items:center;justify-content:space-between;gap:14px;
-     padding:11px 16px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
-.brand{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:19px;
-       letter-spacing:.02em;text-transform:uppercase}
-.brand span{color:var(--sky)}
-.topright{display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}
-.pill{border:1px solid var(--edge);border-radius:2px;padding:6px 11px;color:var(--mute);
-      background:transparent;cursor:pointer;font:inherit;font-size:12px;
-      display:inline-flex;align-items:center;gap:7px}
-.pill:hover{border-color:var(--sky);color:var(--paper)}
-.pill.on{border-color:var(--sky);color:var(--sky);
-         background:color-mix(in srgb, var(--sky) 12%, transparent)}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--rust);flex:none}
-.dot.on{background:var(--jade)}
-.rpcwarn{font-size:11px;color:var(--amber)}
+.hero{padding:44px 0 16px;text-align:center}
+.eyebrow{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:12px;letter-spacing:.28em;
+         text-transform:uppercase;color:var(--mute)}
+h1{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:clamp(50px,13vw,104px);
+   line-height:.88;letter-spacing:-.01em;text-transform:uppercase;margin:10px 0 6px}
+h1 em{font-style:normal;color:var(--sky)}
+.tag{color:var(--mute);font-size:15px;max-width:48ch;margin:0 auto}
 
-[data-panel]{display:none}
-[data-panel].on{display:block}
+.pit{margin:4px auto 0;max-width:880px}
+.pit svg{width:100%;height:auto;display:block}
+.ring{fill:none;stroke:var(--edge);stroke-width:1.3}
+.ring.r1{stroke:#2c4364} .ring.r2{stroke:#293e5c} .ring.r3{stroke:#263a55}
+.floor{fill:var(--slab);stroke:var(--edge);stroke-width:1.3}
+.spoke{stroke:var(--edge);stroke-width:1;opacity:.5}
+.mk-sym{font:600 11px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.12em;fill:var(--mute)}
+.mk-px{font:500 15px "IBM Plex Mono",monospace;fill:var(--paper)}
+.mk-st{font:9.5px "IBM Plex Mono",monospace}
+.st-ok{fill:var(--jade)} .st-warn{fill:var(--amber)} .st-bad{fill:var(--rust)}
+.center-1{font:600 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.2em;fill:var(--mute)}
+.center-2{font:11px "IBM Plex Mono",monospace;fill:#6d829a}
+@media (prefers-reduced-motion:no-preference){
+  .pulse{animation:p 2.6s ease-in-out infinite}
+  @keyframes p{0%,100%{opacity:.30}50%{opacity:.72}}
+}
 
-/* ── market tabs and stats ───────────────────────── */
-.mkts{display:flex;border-bottom:1px solid var(--edge);overflow-x:auto;scrollbar-width:thin}
-.mkt{background:transparent;border:0;border-right:1px solid var(--edge);
-     border-bottom:2px solid transparent;padding:9px 13px;cursor:pointer;text-align:left;
-     color:var(--mute);white-space:nowrap;min-width:104px;flex:none}
-.mkt:hover{background:var(--slab)}
-.mkt.on{border-bottom-color:var(--sky);background:var(--slab);color:var(--paper)}
-.mkt .s{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
-        letter-spacing:.1em;text-transform:uppercase;display:block}
-.mkt .p{font-size:14px;font-variant-numeric:tabular-nums;display:block;margin-top:2px}
-.mkt .st{font-size:10px;letter-spacing:.05em;text-transform:uppercase;display:block;margin-top:1px}
+.enter{text-align:center;padding:6px 0 8px}
+.btn{display:inline-block;font:700 14px/1 "IBM Plex Sans Condensed",sans-serif;
+     letter-spacing:.12em;text-transform:uppercase;background:var(--sky);color:var(--ink);
+     padding:16px 40px;border-radius:2px;text-decoration:none}
+.btn:hover{filter:brightness(1.12)}
+.beneath{color:var(--mute);font-size:12px;margin-top:11px}
 
-.feeds{display:flex;align-items:baseline;gap:11px;padding:7px 16px;
-       border-bottom:1px solid var(--edge);flex-wrap:wrap;background:var(--panel)}
-.feeds .fl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
-.feeds .fs{font-size:12px;color:var(--dim)}
-.feeds .fn{font-size:11px;color:var(--mute);opacity:.8}
+section{border-top:1px solid var(--edge);padding:38px 0}
+h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:13px;
+   letter-spacing:.2em;text-transform:uppercase;color:var(--mute);margin-bottom:18px}
+.lede{font-size:19px;line-height:1.55;max-width:60ch}
+.lede + .lede{margin-top:14px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--edge);
+      border:1px solid var(--edge);margin-top:22px}
+.cell{background:var(--slab);padding:17px}
+.cell h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:15px;margin-bottom:6px}
+.cell p{color:var(--mute);font-size:13.5px;line-height:1.6}
 
-.stats{display:flex;border-bottom:1px solid var(--edge);overflow-x:auto}
-.stat{padding:9px 16px;border-right:1px solid var(--edge);white-space:nowrap;flex:none}
-.stat .k{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);display:block}
-.stat .v{font-size:15px;font-variant-numeric:tabular-nums;display:block;margin-top:1px}
-.stat .s{font-size:10.5px;color:var(--mute);display:block;margin-top:1px}
+.cav{border-left:2px solid var(--rust);padding:2px 0 2px 15px;margin-top:15px}
+.cav b{font-weight:600}
+.cav p{color:var(--mute);font-size:13.5px;margin-top:3px}
 
-/* ── main grid ───────────────────────────────────── */
-/* minmax(0,1fr) rather than 1fr: a grid track defaults to min-content width,
-   so nine market tabs used to push the ticket clean off the screen. */
-.main{display:grid;grid-template-columns:minmax(0,1fr) 316px;gap:0}
-.chartcol{border-right:1px solid var(--edge);min-width:0}
-.tfbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
-       padding:8px 14px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
-.tfs{display:flex;gap:5px}
-.tf{background:transparent;border:1px solid var(--edge);color:var(--mute);
-    padding:4px 10px;font-size:11px;cursor:pointer;border-radius:2px;letter-spacing:.06em}
-.tf.on{background:var(--sky);color:var(--ink);border-color:var(--sky)}
-.ohlc{font-size:11.5px;color:var(--mute);font-variant-numeric:tabular-nums}
-.ohlc b{color:var(--paper);font-weight:500}
-.zoomctl{display:flex;align-items:center;gap:5px}
-.zn{font-size:10.5px;color:var(--mute);white-space:nowrap}
-.tools{display:flex;align-items:center;gap:5px;padding:7px 14px;
-       border-bottom:1px solid var(--edge);flex-wrap:wrap}
-.tools .tl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
-#thin{padding:6px 14px;font-size:11.5px;color:var(--mute);line-height:1.5}
-#chart{height:min(58vh,470px)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+th{text-align:left;font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;
+   letter-spacing:.08em;text-transform:uppercase;color:var(--mute);
+   padding:7px 8px 7px 0;border-bottom:1px solid var(--edge);font-size:11px}
+td{padding:9px 8px 9px 0;border-bottom:1px dotted var(--edge);vertical-align:top}
+td.nm{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:14px;white-space:nowrap}
+td.ad{color:var(--mute);word-break:break-all}
+td.ds{color:var(--mute)}
 
-/* ── ticket ──────────────────────────────────────── */
-.ticket{padding:14px}
-.sides{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
-.side{background:transparent;border:1px solid var(--edge);color:var(--mute);
-      padding:10px;cursor:pointer;border-radius:2px;
-      font:600 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.08em;text-transform:uppercase}
-.side.on.long{background:var(--jade);color:var(--ink);border-color:var(--jade)}
-.side.on.short{background:var(--rust);color:var(--paper);border-color:var(--rust)}
-label{display:block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
-      color:var(--mute);margin:11px 0 4px}
-input[type=text]{width:100%;background:var(--ink);color:var(--paper);border:1px solid var(--edge);
-                 border-radius:2px;padding:9px 10px;font-size:14px}
-input:focus{outline:none;border-color:var(--sky)}
-.levs{display:flex;gap:5px;margin-top:7px}
-.lv{flex:1;background:transparent;border:1px solid var(--edge);color:var(--mute);
-    padding:5px 0;font-size:11px;cursor:pointer;border-radius:2px}
-.kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:4px 0;
-    border-bottom:1px dotted var(--edge)}
-.kv .k{color:var(--mute)} .kv .v{font-variant-numeric:tabular-nums;text-align:right}
-.go{width:100%;margin-top:13px;padding:13px;border:0;border-radius:2px;cursor:pointer;
-    font:700 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.1em;text-transform:uppercase;
-    background:var(--sky);color:var(--ink)}
-.go:disabled{cursor:not-allowed}
-.why{font-size:11.5px;margin-top:9px;line-height:1.5;color:var(--amber)}
-.why.err{color:var(--rust)} .why.ok{color:var(--jade)}
+footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);font-size:12px}
 
-/* ── tables ──────────────────────────────────────── */
-.below{border-top:1px solid var(--edge)}
-.tabs{display:flex;border-bottom:1px solid var(--edge)}
-.tb{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--mute);
-    padding:10px 16px;cursor:pointer;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
-.tb.on{color:var(--paper);border-bottom-color:var(--sky)}
-.wrapscroll{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-th{text-align:left;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);
-   padding:9px 12px;border-bottom:1px solid var(--edge);font-weight:400;white-space:nowrap}
-td{padding:10px 12px;border-bottom:1px solid var(--edge);
-   font-variant-numeric:tabular-nums;white-space:nowrap}
-tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
-.tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:10px;
-     letter-spacing:.07em;padding:2px 6px;border-radius:2px;color:var(--ink)}
-.tag.long{background:var(--jade)} .tag.short{background:var(--rust);color:var(--paper)}
-.mini{background:transparent;border:1px solid var(--edge);color:var(--sky);
-      padding:5px 10px;font-size:11px;cursor:pointer;border-radius:2px}
-.mini:hover{border-color:var(--sky)}
-.none{padding:34px 16px;text-align:center;color:var(--mute);font-size:12.5px;line-height:1.8}
-#log{padding:10px 14px;font-size:11.5px;color:var(--mute);max-height:200px;overflow:auto}
-#log div{padding:2px 0;border-bottom:1px dotted var(--edge);word-break:break-all}
-
-/* ── manage drawer ───────────────────────────────── */
-/* The drawer lives inside a <td>, which inherits nowrap from the table rule —
-   so its paragraphs rendered as single unwrapped lines and overlapped. */
-.mgrcell{white-space:normal!important;background:var(--ink);padding:16px 14px!important}
-.mgr{display:grid;grid-template-columns:1fr 1fr;gap:28px;white-space:normal}
-.mgrcol{min-width:0}
-.mgrhead{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
-         letter-spacing:.1em;text-transform:uppercase;color:var(--paper);margin-bottom:8px;
-         padding-bottom:6px;border-bottom:1px solid var(--edge)}
-.mgrnote{font-size:11.5px;color:var(--mute);line-height:1.65;margin-bottom:12px;max-width:52ch}
-.mgrnote b{color:var(--paper);font-weight:500}
-.mgrrow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px}
-.mgrrow label{margin:0}
-.mgrrow input{width:150px;margin-top:4px;background:var(--slab);color:var(--paper);
-              border:1px solid var(--edge);border-radius:2px;padding:8px 10px;
-              font:13px "IBM Plex Mono",monospace}
-
-/* ── sections ────────────────────────────────────── */
-.sec{border-top:1px solid var(--edge);padding:18px 16px}
-.sec:first-child{border-top:0}
-.secH{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:600;font-size:12px;
-      letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:9px}
-.secP{font-size:12px;color:var(--mute);line-height:1.65;max-width:80ch;margin-bottom:13px}
-.kvrow{display:flex;justify-content:space-between;align-items:baseline;gap:18px;
-       padding:8px 0;border-bottom:1px dotted var(--edge);font-size:13px}
-.kvrow:last-of-type{border-bottom:0}
-.kvrow span{color:var(--mute)}
-.kvrow b{font-weight:400;font-variant-numeric:tabular-nums;text-align:right}
-.lprow{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:12px}
-.lprow input{background:var(--ink);color:var(--paper);border:1px solid var(--edge);
-             border-radius:2px;padding:9px 11px;font:13px "IBM Plex Mono",monospace;width:200px}
-.lpbtn{background:var(--sky);color:var(--ink);border:0;border-radius:2px;padding:10px 15px;
-       cursor:pointer;font:600 12px "IBM Plex Sans Condensed",sans-serif;
-       letter-spacing:.07em;text-transform:uppercase}
-.lpbtn:hover{filter:brightness(1.12)}
-.lpbtn.ghost{background:transparent;color:var(--sky);border:1px solid var(--edge)}
-
-@media (max-width:1180px){ .main{grid-template-columns:minmax(0,1fr) 280px} }
-@media (max-width:900px){
-  .main{grid-template-columns:minmax(0,1fr)}
-  .chartcol{border-right:0;border-bottom:1px solid var(--edge)}
-  .mgr{grid-template-columns:1fr;gap:22px}
+@media (max-width:640px){
+  .grid{grid-template-columns:1fr}
+  td.ds{display:none}
+  .lede{font-size:17px}
 }
 </style>
 </head>
 <body>
+<div class="wrap">
 
-<div class="top">
-  <div class="brand">The <span>Pit</span></div>
-  <div class="topright">
-    <span class="rpcwarn" id="rpcWarn"></span>
-    <button class="pill" id="btnTheme" title="Light or dark">☾</button>
-    <button class="pill" id="btnRpc" title="Switch price endpoint">RPC <span id="rpcN"></span></button>
-    <button class="pill on" data-view="trade">Trade</button>
-    <button class="pill" data-view="folio">Portfolio</button>
-    <button class="pill" data-view="admin">Setup</button>
-    <button class="pill" id="btnConnect"><span class="dot" id="dot"></span><span id="who">Connect</span></button>
+  <div class="hero">
+    <div class="eyebrow">Arc testnet · chain 5042002</div>
+    <h1>The <em>Pit</em></h1>
+    <p class="tag">Nine markets, no order book. The pool takes the other side of every trade.</p>
   </div>
-</div>
 
-<!-- ── trade ──────────────────────────────────────────────────────── -->
-<div data-panel="trade" class="on">
-  <div class="mkts" id="mkts"></div>
-  <div class="feeds">
-    <span class="fl">Feeds</span>
-    <span class="fs">ETH · BTC · SOL · XRP · GOLD cross-checked on two exchanges</span>
-    <span class="fn">US30 · SPX · NAS · WTI run on a single delayed source and say so</span>
+  <!-- the floor itself: a stepped octagon, and nobody standing in it -->
+  <div class="pit">
+    <svg viewBox="-30 -20 900 470" xmlns="http://www.w3.org/2000/svg" role="img"
+         aria-label="A stepped octagonal trading pit with live prices around its rim">
+      <polygon class="ring"    points="697.2,269.7 534.8,354.1 305.2,354.1 142.8,269.7 142.8,150.3 305.2,65.9 534.8,65.9 697.2,150.3"/>
+      <polygon class="ring r1" points="646.4,258.8 513.8,327.7 326.2,327.7 193.6,258.8 193.6,161.2 326.2,92.3 513.8,92.3 646.4,161.2"/>
+      <polygon class="ring r2" points="595.5,247.8 492.7,301.3 347.3,301.3 244.5,247.8 244.5,172.2 347.3,118.7 492.7,118.7 595.5,172.2"/>
+      <polygon class="ring r3" points="544.7,236.9 471.7,274.9 368.3,274.9 295.3,236.9 295.3,183.1 368.3,145.1 471.7,145.1 544.7,183.1"/>
+      <polygon class="floor"   points="495.8,226.3 451.4,249.4 388.6,249.4 344.2,226.3 344.2,193.7 388.6,170.6 451.4,170.6 495.8,193.7"/>
+
+      <g class="spoke">
+        <line x1="697.2" y1="269.7" x2="495.8" y2="226.3"/>
+        <line x1="305.2" y1="354.1" x2="388.6" y2="249.4"/>
+        <line x1="142.8" y1="150.3" x2="344.2" y2="193.7"/>
+        <line x1="534.8" y1="65.9"  x2="451.4" y2="170.6"/>
+      </g>
+
+      <g class="pulse">
+        <text class="center-1" x="420" y="205" text-anchor="middle">EMPTY</text>
+        <text class="center-2" x="420" y="224" text-anchor="middle">the pool stands here</text>
+      </g>
+
+      <!-- crypto along the top, delayed futures along the bottom -->
+      <g transform="translate(70,22)">
+        <text class="mk-sym" x="0" y="0">ETH</text>
+        <text class="mk-px" x="0" y="21" id="pxETH">—</text>
+        <text class="mk-st" x="0" y="36" id="stETH">reading chain</text></g>
+      <g transform="translate(250,22)">
+        <text class="mk-sym" x="0" y="0">BTC</text>
+        <text class="mk-px" x="0" y="21" id="pxBTC">—</text>
+        <text class="mk-st" x="0" y="36" id="stBTC">reading chain</text></g>
+      <g transform="translate(430,22)">
+        <text class="mk-sym" x="0" y="0">SOL</text>
+        <text class="mk-px" x="0" y="21" id="pxSOL">—</text>
+        <text class="mk-st" x="0" y="36" id="stSOL">reading chain</text></g>
+      <g transform="translate(560,22)">
+        <text class="mk-sym" x="0" y="0">XRP</text>
+        <text class="mk-px" x="0" y="21" id="pxXRP">—</text>
+        <text class="mk-st" x="0" y="36" id="stXRP">reading chain</text></g>
+      <g transform="translate(690,22)">
+        <text class="mk-sym" x="0" y="0">GOLD</text>
+        <text class="mk-px" x="0" y="21" id="pxGOLD">—</text>
+        <text class="mk-st" x="0" y="36" id="stGOLD">reading chain</text></g>
+
+      <g transform="translate(120,392)">
+        <text class="mk-sym" x="0" y="0">US30</text>
+        <text class="mk-px" x="0" y="21" id="pxUS30">—</text>
+        <text class="mk-st" x="0" y="36" id="stUS30">reading chain</text></g>
+      <g transform="translate(320,392)">
+        <text class="mk-sym" x="0" y="0">SPX</text>
+        <text class="mk-px" x="0" y="21" id="pxSPX">—</text>
+        <text class="mk-st" x="0" y="36" id="stSPX">reading chain</text></g>
+      <g transform="translate(500,392)">
+        <text class="mk-sym" x="0" y="0">NAS</text>
+        <text class="mk-px" x="0" y="21" id="pxNAS">—</text>
+        <text class="mk-st" x="0" y="36" id="stNAS">reading chain</text></g>
+      <g transform="translate(670,392)">
+        <text class="mk-sym" x="0" y="0">WTI</text>
+        <text class="mk-px" x="0" y="21" id="pxWTI">—</text>
+        <text class="mk-st" x="0" y="36" id="stWTI">reading chain</text></g>
+    </svg>
   </div>
-  <div class="stats" id="stats"></div>
 
-  <div class="main">
-    <div class="chartcol">
-      <div class="tfbar">
-        <div class="tfs" id="tfs"></div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="ohlc" id="ohlc"></div>
-          <div class="zoomctl">
-            <button class="tf" id="zFit" title="Fit everything to the window">Fit</button>
-            <span class="zn" id="zN"></span>
-          </div>
-        </div>
+  <div class="enter">
+    <a class="btn" href="app.html">Step into the pit</a>
+    <div class="beneath" id="depth">reading pool depth…</div>
+  </div>
+
+  <section>
+    <h2>What this is</h2>
+    <p class="lede">Open outcry ran on a stepped octagon like the one above. You stood on a step,
+    shouted a price, and someone shouted back. The whole thing worked because there was always
+    somebody on the other side.</p>
+    <p class="lede">There is nobody here. Instead a pool of deposited capital is counterparty to
+    every position on the desk — traders who win are paid out of it, traders who lose pay into it.
+    Depositors are, collectively, the house.</p>
+
+    <div class="grid">
+      <div class="cell">
+        <h3>No book, no matching</h3>
+        <p>Prices come from an oracle, not from bids meeting offers. Size is available at the mark
+        until the pool runs out of room to honour it.</p>
       </div>
-      <div class="tools">
-        <span class="tl">Indicators</span>
-        <button class="tf" data-ind="ma20">MA20</button>
-        <button class="tf" data-ind="ma50">MA50</button>
-        <button class="tf" data-ind="bb">Bollinger</button>
-        <span class="tl" style="margin-left:8px;color:var(--dim);text-transform:none;letter-spacing:0">
-          Scroll to zoom · drag to pan · drag an axis to scale</span>
+      <div class="cell">
+        <h3>Funding goes to the pool</h3>
+        <p>When longs outweigh shorts the pool is net short, so it collects from longs directly.
+        Same economics as a book, none of the distribution machinery.</p>
       </div>
-      <div id="thin"></div>
-      <div id="chart"></div>
-    </div>
-
-    <div class="ticket">
-      <div class="sides">
-        <button class="side long on" data-side="long">Long</button>
-        <button class="side short" data-side="short">Short</button>
+      <div class="cell">
+        <h3>Open positions pay rent</h3>
+        <p>Funding nets to nothing on a balanced book and fees only arrive when someone trades. A
+        borrow fee scaled to how much of the pool is committed pays for carrying risk in between.</p>
       </div>
-      <label for="fSize">Size (CHIP)</label>
-      <input type="text" id="fSize" value="1000" inputmode="decimal">
-      <label for="fMargin">Margin (CHIP)</label>
-      <input type="text" id="fMargin" value="100" inputmode="decimal">
-      <div class="levs" id="levs"></div>
-      <div style="margin-top:14px">
-        <div class="kv"><span class="k">Entry</span><span class="v" id="qEntry">—</span></div>
-        <div class="kv"><span class="k">Leverage</span><span class="v" id="qLev">—</span></div>
-        <div class="kv"><span class="k">Liquidation</span><span class="v" id="qLiq">—</span></div>
-        <div class="kv"><span class="k">Open fee</span><span class="v" id="qFee">—</span></div>
-        <div class="kv"><span class="k">Profit stops at</span><span class="v" id="qCap">—</span></div>
-        <div class="kv"><span class="k">Price move to reach it</span><span class="v" id="qCapMove">—</span></div>
+      <div class="cell">
+        <h3>The feed can shut the desk</h3>
+        <p>A price older than five minutes stops counting as a price and trading halts. A dead
+        feeder closes the floor rather than settling anyone against a stale print.</p>
       </div>
-      <button class="go" id="btnGo">Open long</button>
-      <div class="why" id="note"></div>
+      <div class="cell">
+        <h3>Two sources must agree</h3>
+        <p>ETH, BTC, SOL, XRP and gold are checked against a second exchange before publishing.
+        When they disagree, nothing is published. The index and energy futures have no free second
+        source, and the interface says so rather than hiding it.</p>
+      </div>
+      <div class="cell">
+        <h3>Something watches for liquidations</h3>
+        <p>Anyone can liquidate an underwater position or fire a crossed stop, but a promise nobody
+        enforces is not a promise. A keeper sweeps every forty-five seconds.</p>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <div class="below">
-    <div class="tabs">
-      <button class="tb on" data-tab="pos">Positions</button>
-      <button class="tb" data-tab="desk">Desk</button>
-      <button class="tb" data-tab="log">Activity</button>
+  <section>
+    <h2>What it will not do</h2>
+    <p class="lede">Every design here bought something by giving something up. The trades are worth
+    stating plainly rather than discovering them with a position open.</p>
+
+    <div class="cav">
+      <b>Profit is capped at half your size.</b>
+      <p>That exact amount is set aside in the pool the moment you open, so a winner is always
+      payable. The cost is that a runner stops earning past the cap. A pool that promises unbounded
+      payouts cannot reserve against them, and an unreserved promise is the one that breaks.</p>
     </div>
-    <div id="tabPos" class="wrapscroll"></div>
-    <div id="tabDesk" class="wrapscroll" hidden></div>
-    <div id="tabLog" hidden><div id="log"></div></div>
-  </div>
-</div>
-
-<!-- ── portfolio ──────────────────────────────────────────────────── -->
-<div data-panel="folio">
-  <div class="stats" id="fStats"></div>
-  <div id="fPool"></div>
-</div>
-
-<!-- ── setup ──────────────────────────────────────────────────────── -->
-<div data-panel="admin">
-  <div class="sec">
-    <h3 class="secH">Owner</h3>
-    <div class="kvrow"><span>Price engine owner</span><b id="aOwner">—</b></div>
-    <p class="secP" id="aOwnerNote"></p>
-  </div>
-
-  <div class="sec" id="ownerOnly" hidden>
-    <h3 class="secH">Prices</h3>
-    <p class="secP">Authorising a pusher is what lets the feeder publish. Force push skips the
-      deviation breaker and exists for reopens after a gap — a weekend move can legitimately exceed
-      the limit, and without it the market would stay frozen at the last print before it.</p>
-    <div class="lprow">
-      <input type="text" id="aPusher" placeholder="feeder address">
-      <button class="lpbtn ghost" id="aSetPusher">Authorise pusher</button>
+    <div class="cav">
+      <b>A stop fills where the oracle is, not where you set it.</b>
+      <p>Price gapping straight through a stop fills past it, and that difference is yours. Paying
+      out at the trigger instead would put the gap on the pool, and depositors did not agree to
+      cover the worst moment of someone else's trade.</p>
     </div>
-    <div class="lprow">
-      <input type="text" id="aFpId" placeholder="market id" style="width:120px">
-      <input type="text" id="aFpPx" placeholder="price" style="width:160px">
-      <button class="lpbtn ghost" id="aForce">Force push</button>
+    <div class="cav">
+      <b>A halted market traps a position.</b>
+      <p>Closing needs a live price, because settling against a stale one robs whichever side the
+      staleness favours. Margin can still be added, so a position can be defended through a closure
+      even when it cannot be exited. A weekend gap settles on the reopen.</p>
     </div>
-
-    <h3 class="secH" style="margin-top:22px">Halt</h3>
-    <p class="secP">Pausing a market stops opens and closes on it immediately. Pause everything when
-      the feed is publishing numbers you do not trust and you cannot yet tell which market it
-      poisoned.</p>
-    <div class="lprow">
-      <input type="text" id="aPauseId" placeholder="market id" style="width:120px">
-      <button class="lpbtn ghost" id="aPause">Pause</button>
-      <button class="lpbtn ghost" id="aUnpause">Unpause</button>
-      <button class="lpbtn ghost" id="aPauseAll">Pause everything</button>
+    <div class="cav">
+      <b>Four markets run on delayed, unchecked data.</b>
+      <p>US30, SPX, NAS and WTI track futures from a single free source, typically ten to fifteen
+      minutes behind. Anyone holding a real-time terminal knows where they are before this desk
+      does. Academic on a testnet; disqualifying anywhere real.</p>
     </div>
-    <div class="why" id="whyAdmin"></div>
-  </div>
+    <div class="cav">
+      <b>Fees are 0.1% each way on size, not margin.</b>
+      <p>A 1,000-size trade costs 2 CHIP round trip whatever the leverage, so small moves are not
+      tradeable here. A nineteen-cent win on ETH at that size is still a nineteen-dollar loss after
+      costs.</p>
+    </div>
+    <div class="cav">
+      <b>Four bugs reached a live desk before a test suite existed.</b>
+      <p>A partial close silently destroyed the remainder. A view function divided by zero on any
+      settled position. Reported liability ran ahead of what the pool had reserved twice over, in
+      two different ways. All four were found by Foundry tests written afterwards — the hand-rolled
+      simulations they replaced had passed, because they tested a reading of the contracts rather
+      than the contracts.</p>
+    </div>
+    <div class="cav">
+      <b>The money is not money.</b>
+      <p>Collateral is a test token anyone can mint, on a testnet, worthless on purpose.</p>
+    </div>
+  </section>
 
-  <div class="sec">
-    <h3 class="secH">Contracts</h3>
-    <div id="aAddrs"></div>
-  </div>
+  <section>
+    <h2>The stack</h2>
+    <table>
+      <thead><tr><th>Contract</th><th>Address</th><th class="ds">Job</th></tr></thead>
+      <tbody id="stack"></tbody>
+    </table>
+  </section>
+
+  <footer>
+    Testnet only. Nothing here is an investment, an offer, or a promise.<br>
+    Built on Arc, chain 5042002 · <a href="https://testnet.arcscan.app" target="_blank" rel="noopener">arcscan</a>
+  </footer>
+
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script type="module">
-  import { boot } from "./pit-ui.js";
-  boot();
+import { A, SCAN, MARKETS, STATUS, contract, money, fmt, short } from "./pit.js";
+
+const STACK = [
+  ["PriceEngine", A.engine,    "Publishes prices. Halts a market when the feed goes stale or the session closes."],
+  ["Ballast",     A.ballast,   "The pool. Counterparty to every position, and what depositors own a share of."],
+  ["Floorplan",   A.floorplan, "The desk. Opens, funds, closes and liquidates positions against the pool."],
+  ["Chips",       A.chips,     "Test collateral. Six decimals, open mint, worthless by design."],
+];
+document.getElementById("stack").innerHTML = STACK.map(([n, a, d]) =>
+  `<tr><td class="nm">${n}</td>
+   <td class="ad"><a href="${SCAN}/address/${a}" target="_blank" rel="noopener">${a}</a></td>
+   <td class="ds">${d}</td></tr>`).join("");
+
+async function tick() {
+  const en = contract("engine");
+  for (const m of MARKETS) {
+    try {
+      const [value, , , s] = await en.peek(m.id);
+      const st = Number(s);
+      const px = document.getElementById("px" + m.sym);
+      const el = document.getElementById("st" + m.sym);
+      if (px) px.textContent = Number(value) ? "$" + money(Number(window.ethers.formatUnits(value, 18))) : "—";
+      if (el) {
+        el.textContent = (STATUS[st] || "unknown").toLowerCase();
+        el.setAttribute("class", "mk-st " + (st === 0 ? "st-ok" : st === 5 ? "st-warn" : "st-bad"));
+      }
+    } catch (e) {
+      const el = document.getElementById("st" + m.sym);
+      if (el) el.textContent = "chain unreachable";
+    }
+  }
+
+  try {
+    const st = await contract("vault").stats();
+    document.getElementById("depth").textContent =
+      `${fmt(st[0], 6, 0)} CHIP in the pool · ${fmt(st[2], 6, 0)} free to back new positions`;
+  } catch (e) {
+    document.getElementById("depth").textContent =
+      "pool depth unavailable — the chain is not answering right now";
+  }
+}
+tick();
+setInterval(tick, 20000);
 </script>
 </body>
 </html>

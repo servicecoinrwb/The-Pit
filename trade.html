@@ -732,7 +732,28 @@ function candles(id, secs){
     else { b.h=Math.max(b.h,d.p); b.l=Math.min(b.l,d.p); b.c=d.p; b.n++; }
   }
   if(b)out.push(b);
-  return out;
+
+  /* Fill the holes.
+     The x-axis positions candles by index, so a seven-hour outage used to
+     render as one slot wide — three in the afternoon sitting right beside ten
+     at night, with the price line leaping between them. That reads as a
+     violent move rather than as missing data, which is the opposite of what
+     the panel promises.
+     Empty buckets are inserted for the missing time so the gap occupies the
+     width it actually took. They carry no prices and draw as nothing. */
+  const filled=[];
+  for(let i=0;i<out.length;i++){
+    filled.push(out[i]);
+    if(i+1<out.length){
+      const missing=(out[i+1].t-out[i].t)/secs - 1;
+      // Bounded: a feeder down for a week should not add 2,000 blanks and
+      // squeeze the real candles into nothing.
+      const add=Math.min(missing, 40);
+      for(let g=1;g<=add;g++) filled.push({t:out[i].t+g*secs, gap:true, n:0});
+      if(missing>add) filled.push({t:out[i].t+(add+1)*secs, gap:true, n:0, elided:missing-add});
+    }
+  }
+  return filled;
 }
 
 /* ── indicator maths ──────────────────────────────────────────────────
@@ -740,11 +761,34 @@ function candles(id, secs){
    describe exactly the prices this desk settles against. */
 const ind={ma20:false,ma50:false,bb:false,rsi:false};
 
-function sma(v,n,i){ if(i<n-1) return null; let s=0; for(let k=i-n+1;k<=i;k++) s+=v[k]; return s/n; }
-function stdev(v,n,i,mean){ if(i<n-1) return null; let s=0; for(let k=i-n+1;k<=i;k++) s+=(v[k]-mean)**2; return Math.sqrt(s/n); }
+function sma(v,n,i){
+  if(i<n-1) return null;
+  let s=0, c=0;
+  for(let k=i-n+1;k<=i;k++){ if(v[k]==null) continue; s+=v[k]; c++; }
+  // A window that is mostly gap is not an average of anything.
+  return c >= Math.ceil(n*0.6) ? s/c : null;
+}
+function stdev(v,n,i,mean){
+  if(i<n-1||mean==null) return null;
+  let s=0,c=0;
+  for(let k=i-n+1;k<=i;k++){ if(v[k]==null) continue; s+=(v[k]-mean)**2; c++; }
+  return c ? Math.sqrt(s/c) : null;
+}
 
 /** Wilder's RSI. Needs n+1 closes before it says anything. */
 function rsi(v,n=14){
+  const out=new Array(v.length).fill(null);
+  // Gaps break the running average, so RSI is computed over the real closes
+  // and mapped back to their positions rather than treating a hole as flat.
+  const idx=[], vals=[];
+  v.forEach((x,i)=>{ if(x!=null){ idx.push(i); vals.push(x); } });
+  if(vals.length<=n) return out;
+  const r=rsiCore(vals,n);
+  r.forEach((x,j)=>{ if(x!=null) out[idx[j]]=x; });
+  return out;
+}
+
+function rsiCore(v,n){
   const out=new Array(v.length).fill(null);
   if(v.length<=n) return out;
   let g=0,l=0;
@@ -824,8 +868,14 @@ function drawChart(){
   const mainH = showR ? bodyH*0.66 : bodyH;
   const rsiTop= PT+mainH+16, rsiH = showR ? bodyH-mainH-16 : 0;
 
-  const closes=cs.map(c=>c.c);
-  let lo=Math.min(...cs.map(c=>c.l)), hi=Math.max(...cs.map(c=>c.h));
+  // Indicators run on real closes only; a gap has no price to average.
+  const closes=cs.map(c=>c.gap?null:c.c);
+  const real=cs.filter(c=>!c.gap);
+  if(real.length<2){
+    box.innerHTML=`<div class="empty">Not enough prints yet for ${sym} at this timeframe.</div>`;
+    $("ohlc").textContent=""; $("thin").textContent=""; return;
+  }
+  let lo=Math.min(...real.map(c=>c.l)), hi=Math.max(...real.map(c=>c.h));
 
   // Indicators can sit outside the candle range; include them or the line
   // silently clips and reads as wrong.
@@ -897,6 +947,7 @@ function drawChart(){
           `${new Date(cs[i].t*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</text>`;
   }
   cs.forEach((c,i)=>{
+    if(c.gap) return;                       // nothing was published here
     const k=c.c>=c.o?"up":"dn", x=X(i);
     const yo=Y(c.o),yc=Y(c.c),top=Math.min(yo,yc);
     // A zero-height rect renders as nothing when hollow; keep a visible bar.
@@ -959,7 +1010,9 @@ function drawChart(){
   }
 
   // The rightmost candle of a scrolled-back window is history, not the mark.
-  const mark=atLive ? cs[cs.length-1].c : all[all.length-1].c;
+  const lastReal=[...cs].reverse().find(c=>!c.gap) || real[real.length-1];
+  const allReal=[...all].reverse().find(c=>!c.gap);
+  const mark=atLive ? (allReal?allReal.c:lastReal.c) : lastReal.c;
   const my=Y(mark);
   let cross="";
   if(hoverIdx!==null&&cs[hoverIdx]) cross=`<line class="cross" x1="${X(hoverIdx).toFixed(1)}" y1="${PT}" x2="${X(hoverIdx).toFixed(1)}" y2="${(H-PB).toFixed(1)}"/>`;
@@ -1115,7 +1168,7 @@ function drawChart(){
     if(rb) rb.hidden = !vZoom;
   }
 
-  showOHLC(cs[hoverIdx!==null?hoverIdx:cs.length-1]);
+  showOHLC(cs[hoverIdx!==null&&!cs[hoverIdx]?.gap ? hoverIdx : cs.lastIndexOf(lastReal)]);
 }
 
 function showOHLC(c){

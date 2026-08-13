@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"> 
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
 <title>The Pit — a pool-backed perp desk on Arc</title>
 <meta name="description" content="Nine markets, no order book. The pool takes the other side of every trade.">
@@ -201,6 +201,12 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
         source, and the interface says so rather than hiding it.</p>
       </div>
       <div class="cell">
+        <h3>History lives on the desk</h3>
+        <p>Closed positions are deleted from storage, so the desk keeps its own tally: every close,
+        what it netted, what it cost in fees. One call rather than a walk through event logs, which
+        a public endpoint rate limits into silence.</p>
+      </div>
+      <div class="cell">
         <h3>Something watches for liquidations</h3>
         <p>Anyone can liquidate an underwater position or fire a crossed stop, but a promise nobody
         enforces is not a promise. A keeper sweeps every forty-five seconds.</p>
@@ -244,12 +250,12 @@ footer{border-top:1px solid var(--edge);padding:26px 0 60px;color:var(--mute);fo
       costs.</p>
     </div>
     <div class="cav">
-      <b>Four bugs reached a live desk before a test suite existed.</b>
+      <b>Five bugs reached a live desk before a test suite existed.</b>
       <p>A partial close silently destroyed the remainder. A view function divided by zero on any
-      settled position. Reported liability ran ahead of what the pool had reserved twice over, in
-      two different ways. All four were found by Foundry tests written afterwards — the hand-rolled
-      simulations they replaced had passed, because they tested a reading of the contracts rather
-      than the contracts.</p>
+      settled position. Reported liability ran ahead of what the pool had reserved, twice, in two
+      different ways. A closed-trade tally recorded one settlement path out of four. All five were
+      found by Foundry tests written afterwards — the hand-rolled simulations they replaced had
+      passed, because they tested a reading of the contracts rather than the contracts.</p>
     </div>
     <div class="cav">
       <b>The money is not money.</b>

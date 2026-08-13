@@ -5,6 +5,7 @@
 
 import * as P from "./pit.js";
 import * as C from "./pit-chart.js";
+import * as D from "./pit-draw.js";
 
 const E = window.ethers;
 
@@ -144,7 +145,18 @@ function showOHLC(c) {
 
 function drawChart() {
   if (S.view !== "trade") return;
-  if (!C.alive()) C.build($("chart"), showOHLC);
+  if (!C.alive()) {
+    C.build($("chart"), showOHLC);
+    const { chart, series } = C.raw();
+    D.attach($("chart"), chart, series, S.market, m => {
+      document.querySelectorAll("[data-draw]").forEach(b =>
+        b.classList.toggle("on", b.dataset.draw === m));
+      $("drawhint").textContent = D.hint();
+    });
+    // Redraw the overlay whenever the visible range moves, or the drawings
+    // detach from the candles they were placed against.
+    C.onViewChange(() => D.render());
+  }
 
   const p = S.prices[S.market];
   const r = C.draw(S.market, S.tf, p && p.price);
@@ -163,6 +175,7 @@ function drawChart() {
   $("zN").textContent = `${r.count} candles${r.span ? " · " + P.dur(r.span) : ""}`;
 
   C.markPositions(S.positions, S.market, v => Number(E.formatUnits(v, 18)));
+  D.setMarket(S.market);
   if (!S.hovering) showOHLC(r.last);
 }
 
@@ -668,6 +681,11 @@ export async function boot() {
     drawChart();
   });
 
+  D.load();
+  document.querySelectorAll("[data-draw]").forEach(b =>
+    b.onclick = () => D.setMode(b.dataset.draw));
+  $("clrDraw").onclick = () => D.clearMarket();
+
   document.querySelectorAll("[data-ind]").forEach(b => b.onclick = () => {
     C.indicators[b.dataset.ind] = !C.indicators[b.dataset.ind];
     b.classList.toggle("on", C.indicators[b.dataset.ind]);
@@ -712,6 +730,12 @@ export async function boot() {
 
   $("zFit").onclick = () => C.fit();
 
+  /* Two grips: the chart's height, and the split between chart and ticket.
+     The library autosizes, which is not the same as letting you choose — a
+     chart you deliberately made taller should stay that way. */
+  gripV();
+  gripH();
+
   $("btnRpc").onclick = () => {
     P.rotateRpc();
     $("rpcN").textContent = String(P.rpcLabel());
@@ -751,6 +775,75 @@ export async function boot() {
   await doConnect(false);
   await refresh();
   setInterval(refresh, 30000);
+}
+
+/** Vertical: the boundary between chart and the tables below it. */
+function gripV() {
+  const KEY = "pit.charth", MIN = 220, MAX = 900;
+  const apply = (px, persist) => {
+    const h = Math.max(MIN, Math.min(MAX, Math.round(px)));
+    document.documentElement.style.setProperty("--charth", h + "px");
+    if (persist) { try { localStorage.setItem(KEY, String(h)); } catch (e) { } }
+    D.render();
+  };
+  apply(Number(localStorage.getItem(KEY)) || Math.min(470, Math.round(innerHeight * 0.52)), false);
+
+  const g = $("grip");
+  let start = null;
+  g.addEventListener?.("pointerdown", ev => {
+    start = { y: ev.clientY, h: $("chart").clientHeight };
+    g.classList.add("dragging"); document.body.classList.add("resizing");
+    g.setPointerCapture?.(ev.pointerId);
+    ev.preventDefault();
+  });
+  addEventListener("pointermove", ev => {
+    if (start) apply(start.h + (ev.clientY - start.y), false);
+  });
+  addEventListener("pointerup", ev => {
+    if (!start) return;
+    apply($("chart").clientHeight, true);
+    start = null;
+    g.classList.remove("dragging"); document.body.classList.remove("resizing");
+    g.releasePointerCapture?.(ev.pointerId);
+  });
+  g.addEventListener?.("dblclick", () => apply(470, true));
+}
+
+/** Horizontal: the split between the chart and the order ticket. */
+function gripH() {
+  const KEY = "pit.tickw", MIN = 240, MAX = 560;
+  const apply = (px, persist) => {
+    const w = Math.max(MIN, Math.min(MAX, Math.round(px)));
+    document.documentElement.style.setProperty("--tickw", w + "px");
+    if (persist) { try { localStorage.setItem(KEY, String(w)); } catch (e) { } }
+    D.render();
+  };
+  apply(Number(localStorage.getItem(KEY)) || 316, false);
+
+  const g = $("vgrip");
+  let start = null;
+  g.addEventListener?.("pointerdown", ev => {
+    const cur = parseInt(getComputedStyle(document.documentElement)
+      .getPropertyValue("--tickw")) || 316;
+    start = { x: ev.clientX, w: cur };
+    g.classList.add("dragging"); document.body.classList.add("vresizing");
+    g.setPointerCapture?.(ev.pointerId);
+    ev.preventDefault();
+  });
+  addEventListener("pointermove", ev => {
+    // Dragging left widens the chart, so the ticket grows as the pointer
+    // moves toward the left edge — hence the inverted delta.
+    if (start) apply(start.w - (ev.clientX - start.x), false);
+  });
+  addEventListener("pointerup", ev => {
+    if (!start) return;
+    apply(parseInt(getComputedStyle(document.documentElement)
+      .getPropertyValue("--tickw")) || 316, true);
+    start = null;
+    g.classList.remove("dragging"); document.body.classList.remove("vresizing");
+    g.releasePointerCapture?.(ev.pointerId);
+  });
+  g.addEventListener?.("dblclick", () => apply(316, true));
 }
 
 async function doConnect(prompt) {

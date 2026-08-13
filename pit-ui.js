@@ -32,6 +32,7 @@ const S = {
   wallet: null, signer: null,
   prices: {}, markets: {}, positions: [], posError: null,
   pool: null, chips: 0n, owner: null,
+  history: null, histError: null,
   openDrawer: null,
   loaded: false,
 };
@@ -61,6 +62,7 @@ async function send(fn, label, whyId) {
     await tx.wait();
     note(whyId, label + " confirmed.", "ok");
     log(label + " confirmed", tx.hash);
+    S.history = null;                 // a close changes the tally
     await refresh();
     return true;
   } catch (e) {
@@ -449,6 +451,108 @@ function paintDesk() {
 
 // ── portfolio ─────────────────────────────────────────────────────────
 
+function paintHistory() {
+  const h = S.history;
+
+  if (!S.wallet) {
+    $("fTrades").innerHTML = '<div class="none">Connect a wallet to see your closed trades.</div>';
+    $("fCurve").innerHTML = "";
+    return;
+  }
+  if (S.histError) {
+    $("fTrades").innerHTML = `<div class="none" style="color:var(--rust)">
+      Could not read your trade history.<br>${S.histError}<br>
+      That is a read failure, not an empty account — try the RPC switch.</div>`;
+    return;
+  }
+  if (!h || !h.stats || h.stats.closed === 0) {
+    $("fTrades").innerHTML = `<div class="none">No closed trades yet.<br>
+      History is kept by the desk itself, so it survives a bad connection —
+      what you see here is what the contract holds, not what a log query
+      managed to return.</div>`;
+    $("fCurve").innerHTML = "";
+    return;
+  }
+
+  const st = h.stats;
+  const rate = st.closed ? Math.round(st.wins / st.closed * 100) : 0;
+  const net = P.num(st.net, 6);
+  const sgn = v => (v >= 0 ? "+" : "-") + P.money(Math.abs(v), 2);
+
+  const rows = h.trades.map(t => {
+    const sym = (P.MARKETS.find(m => m.id === t.market) || {}).sym || t.market;
+    const when = new Date(t.at * 1000).toLocaleString([], {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return `<tr>
+      <td><span class="tag ${t.isLong ? "long" : "short"}">${t.isLong ? "LONG" : "SHORT"}</span> ${sym}</td>
+      <td>${P.fmt(t.size, 6, 0)}</td>
+      <td>${P.fmt(t.entry, 18)}</td>
+      <td>${P.fmt(t.exit, 18)}</td>
+      <td class="${t.net >= 0n ? "ok" : "bad"}">${t.net >= 0n ? "+" : "-"}${P.fmt(t.net < 0n ? -t.net : t.net, 6)}</td>
+      <td style="color:var(--mute)">${when}</td></tr>`;
+  }).join("");
+
+  $("fTrades").innerHTML = `
+    <div class="stats">
+      <div class="stat"><span class="k">Realized net</span>
+        <span class="v ${net >= 0 ? "ok" : "bad"}">${sgn(net)}</span>
+        <span class="s">what came back, less what went in</span></div>
+      <div class="stat"><span class="k">Closed trades</span>
+        <span class="v">${st.closed}</span>
+        <span class="s">${st.closed > P.RING ? "showing the last " + P.RING : "all shown below"}</span></div>
+      <div class="stat"><span class="k">Win rate</span>
+        <span class="v">${rate}%</span>
+        <span class="s">${st.wins} up · ${st.closed - st.wins} down</span></div>
+      <div class="stat"><span class="k">Fees paid</span>
+        <span class="v">${P.fmt(st.fees, 6, 2)}</span>
+        <span class="s">0.1% each way on size</span></div>
+    </div>
+    <table><thead><tr>
+      <th>Market</th><th>Size</th><th>Entry</th><th>Exit</th><th>Net</th><th>Closed</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+
+  drawCurve(h.trades);
+}
+
+/**
+ * Cumulative net, oldest to newest. The trades arrive newest first because
+ * that is the right order for a table, so they are reversed here rather than
+ * stored twice.
+ */
+function drawCurve(trades) {
+  const box = $("fCurve");
+  if (!box || trades.length < 2) { if (box) box.innerHTML = ""; return; }
+
+  const pts = [0];
+  let run = 0;
+  for (const t of [...trades].reverse()) { run += P.num(t.net, 6); pts.push(run); }
+
+  const W = Math.max(360, box.clientWidth || 800), H = 200;
+  const PL = 8, PR = 70, PT = 14, PB = 18;
+  let lo = Math.min(0, ...pts), hi = Math.max(0, ...pts);
+  if (hi === lo) { hi = lo + 1; lo -= 1; }
+  const pad = (hi - lo) * 0.15; lo -= pad; hi += pad;
+  const X = i => PL + (pts.length > 1 ? i / (pts.length - 1) : 0) * (W - PL - PR);
+  const Y = v => PT + (hi - v) / (hi - lo) * (H - PT - PB);
+
+  let grid = "";
+  for (let i = 0; i <= 3; i++) {
+    const v = lo + (hi - lo) * i / 3, y = Y(v);
+    grid += `<line class="cgl" x1="${PL}" y1="${y.toFixed(1)}" x2="${W - PR}" y2="${y.toFixed(1)}"/>`
+         +  `<text class="cax" x="${W - PR + 6}" y="${(y + 3.5).toFixed(1)}">${P.money(v, 2)}</text>`;
+  }
+  const line = pts.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1];
+  const col = last >= 0 ? "var(--jade)" : "var(--rust)";
+
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    ${grid}
+    <line class="czero" x1="${PL}" y1="${Y(0).toFixed(1)}" x2="${W - PR}" y2="${Y(0).toFixed(1)}"/>
+    <polyline class="cline" points="${line}" stroke="${col}"/>
+    <circle cx="${X(pts.length - 1).toFixed(1)}" cy="${Y(last).toFixed(1)}" r="3.5" fill="${col}"/>
+  </svg>`;
+}
+
 function paintPortfolio() {
   const st = S.pool && S.pool.stats;
   const mine = S.pool && S.pool.mine;
@@ -665,6 +769,12 @@ async function doRefresh() {
     try { S.owner = await P.isOwner(S.wallet); } catch (e) { }
   }
   try { S.pool = await P.readPool(S.wallet); } catch (e) { }
+  if (S.wallet) {
+    try {
+      const h = await P.readHistory(S.wallet);
+      S.history = h; S.histError = h.error;
+    } catch (e) { S.histError = e.message; }
+  }
 
   paintAll();
 }
@@ -679,6 +789,7 @@ function paintAll() {
   safe(paintPositions, "Positions");
   safe(paintDesk, "Desk");
   safe(paintPortfolio, "Portfolio");
+  safe(paintHistory, "History");
   safe(paintAdmin, "Admin");
   if (S.view === "trade") safe(drawChart, "Chart");
 }
@@ -714,6 +825,13 @@ export async function boot() {
     document.querySelectorAll(".side").forEach(x =>
       x.classList.toggle("on", x.dataset.side === S.side));
     quote();
+  });
+
+  document.querySelectorAll("[data-ftab]").forEach(b => b.onclick = () => {
+    document.querySelectorAll("[data-ftab]").forEach(x => x.classList.toggle("on", x === b));
+    $("fPool").hidden = b.dataset.ftab !== "pool";
+    $("fTradesWrap").hidden = b.dataset.ftab !== "trades";
+    if (b.dataset.ftab === "trades") paintHistory();
   });
 
   document.querySelectorAll(".tb").forEach(b => b.onclick = () => {

@@ -834,8 +834,15 @@ export async function boot() {
     if (b.dataset.ftab === "trades") paintHistory();
   });
 
-  document.querySelectorAll(".tb").forEach(b => b.onclick = () => {
-    document.querySelectorAll(".tb").forEach(x => x.classList.toggle("on", x === b));
+  /* Scoped to [data-tab]. Both tab strips share the .tb class for styling,
+     and binding onclick by class meant this handler replaced the portfolio
+     one entirely — clicking "Closed trades" ran the trading-panel toggle and
+     left both portfolio panels showing at once.
+
+     Assignment replaces; it does not add. Two handlers on the same selector
+     is one handler. */
+  document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
+    document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("on", x === b));
     $("tabPos").hidden  = b.dataset.tab !== "pos";
     $("tabDesk").hidden = b.dataset.tab !== "desk";
     $("tabLog").hidden  = b.dataset.tab !== "log";
@@ -893,6 +900,11 @@ export async function boot() {
   $("btnConnect").onclick = () => doConnect(true);
 
   wireAdmin();
+
+  // Without this the first paint leaves both portfolio panels visible until
+  // something is clicked.
+  $("fTradesWrap").hidden = true;
+  $("fPool").hidden = false;
 
   const cached = C.loadCache();
   if (cached) log(`cache: ${cached} points, ${P.dur(Math.max(...P.MARKETS.map(m => C.historySpan(m.id))))} of history`);

@@ -82,7 +82,12 @@ function setView(v) {
   document.querySelectorAll("[data-panel]").forEach(p =>
     p.classList.toggle("on", p.dataset.panel === v));
   paintAll();
-  if (v === "trade") drawChart();
+  if (v === "trade") {
+    // The panel was display:none until a moment ago, so the chart measured a
+    // container with no size. Nudging it after the switch is cheaper than
+    // rebuilding and covers the case where trade was not the first view.
+    requestAnimationFrame(() => { C.resize(); drawChart(); });
+  }
 }
 
 // ── market tabs and stats ─────────────────────────────────────────────
@@ -869,12 +874,6 @@ export async function boot() {
 
   $("zFit").onclick = () => C.fit();
 
-  /* Two grips: the chart's height, and the split between chart and ticket.
-     The library autosizes, which is not the same as letting you choose — a
-     chart you deliberately made taller should stay that way. */
-  gripV();
-  gripH();
-
   $("btnRpc").onclick = () => {
     P.rotateRpc();
     $("rpcN").textContent = String(P.rpcLabel());
@@ -909,6 +908,18 @@ export async function boot() {
   const cached = C.loadCache();
   if (cached) log(`cache: ${cached} points, ${P.dur(Math.max(...P.MARKETS.map(m => C.historySpan(m.id))))} of history`);
 
+  /* The chart measures its container when it is built, and the grips are what
+     set --charth. Building first measured a container with no height, so the
+     chart came up zero-tall and stayed that way until a refresh — by which
+     point the height was already in localStorage and the order no longer
+     mattered. That is exactly why it worked on the second load and never the
+     first. */
+  gripV();
+  gripH();
+
+  // Two frames, so the browser has applied the height before it is measured.
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
   C.build($("chart"), showOHLC);
   paintAll();
 
@@ -919,6 +930,17 @@ export async function boot() {
   await doConnect(false);
   await refresh();
   setInterval(refresh, 30000);
+
+  /* A chart built against a container that was not laid out yet stays the
+     wrong size silently. Watching the container catches that, and covers the
+     window being resized or the panel being shown for the first time. */
+  if (window.ResizeObserver) {
+    let last = 0;
+    new ResizeObserver(() => {
+      const h = $("chart").clientHeight;
+      if (h > 0 && Math.abs(h - last) > 2) { last = h; D.render(); }
+    }).observe($("chart"));
+  }
 }
 
 /** Vertical: the boundary between chart and the tables below it. */

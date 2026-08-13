@@ -5,7 +5,7 @@
 
 import * as P from "./pit.js";
 import * as C from "./pit-chart.js";
-import * as D from "./pit-draw.js"; 
+import * as D from "./pit-draw.js";
 
 const E = window.ethers;
 
@@ -634,10 +634,24 @@ async function doRefresh() {
       if (p) C.record(m.id, p.price, p.at);
     }
     S.loaded = true;
+    P.noteRead(true);
     $("rpcWarn").textContent = "";
   } catch (e) {
-    if (!S.loaded) $("rpcWarn").textContent = "loading…";
-    else log("Price read failed: " + (e.shortMessage || e.message));
+    /* Report the failure so the endpoint can be stepped past. CORS never
+       resolves on its own — the endpoint will refuse every browser request for
+       as long as it stays selected — so sitting on it means a page that never
+       recovers. */
+    const switched = P.noteRead(false, e);
+    if (switched) {
+      log(switched);
+      $("rpcN").textContent = String(P.rpcLabel());
+      $("rpcWarn").textContent = "switched endpoint";
+      // Retry once on the new endpoint rather than waiting out the interval.
+      setTimeout(() => refresh(), 800);
+      return;
+    }
+    $("rpcWarn").textContent = S.loaded ? "reads refused" : "loading…";
+    if (S.loaded) log("Price read failed: " + (e.shortMessage || e.message));
   }
 
   try { S.markets = await P.readMarkets(); } catch (e) { }

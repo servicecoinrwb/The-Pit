@@ -1148,8 +1148,25 @@ function loadCache(){
 
 function saveCache(){
   try{
+    // Never write less than is already stored. A rate-limited backfill leaves
+    // the series short, and saving that over a day of accumulated history is
+    // how the chart kept resetting to a few hours — the cache was being
+    // overwritten with the failure rather than preserved through it.
+    let stored=null;
+    try{ stored=JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); }catch(e){}
     const out={};
-    for(const k in series) out[k]=series[k].slice(-CACHE_MAX);
+    for(const k in series){
+      const mine=series[k]||[];
+      const theirs=(stored && stored.engine===A.engine && stored.s && stored.s[k]) || [];
+      // Merge rather than replace: whichever pass saw more of the history,
+      // both halves are real prints and neither should be discarded.
+      if(theirs.length > mine.length){
+        const seen=new Set(mine.map(d=>d.t));
+        const merged=mine.concat(theirs.filter(d=>!seen.has(d.t))).sort((a,b)=>a.t-b.t);
+        series[k]=merged.slice(-CACHE_MAX);
+      }
+      out[k]=series[k].slice(-CACHE_MAX);
+    }
     localStorage.setItem(CACHE_KEY, JSON.stringify({engine:A.engine, block:lastBlock, s:out}));
   }catch(e){
     // Quota is the likely failure. Halve everything and try once more
@@ -1176,7 +1193,11 @@ function dedupe(){
 async function history(p){
   if(loaded) return; loaded=true;
   const had=loadCache();
-  if(had) drawChart();                        // paint from cache immediately
+  if(had){
+    const span=Object.values(series).map(a=>a.length?a[a.length-1].t-a[0].t:0);
+    log("cache: "+had+" points, "+dur(Math.max(...span,0))+" of history");
+    drawChart();
+  }                        // paint from cache immediately
 
   try{
     const latest=await p.getBlockNumber();
@@ -1221,8 +1242,10 @@ function live(id,p,t){
   if(!Number.isFinite(p)||p<=0||!Number.isFinite(t)||t<=0) return;
   if(s.length&&s[s.length-1].t>=t) return;
   s.push({t,p}); if(s.length>CACHE_MAX) s.shift();
-  // Persist occasionally so a refresh keeps what the tape added.
-  if(++saveTick%6===0) saveCache();
+  // Persist on every second cycle. At one write per six, a tab closed at the
+  // wrong moment lost minutes of prints, and those minutes are exactly the
+  // gaps that make a chart look like it restarted.
+  if(++saveTick%2===0) saveCache();
 }
 
 /* ── chrome ───────────────────────────────────────────────────────── */

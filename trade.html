@@ -98,7 +98,11 @@ body.vresizing{cursor:col-resize;user-select:none}
 .zoomctl{display:flex;align-items:center;gap:4px}
 .zoomctl .tf{padding:3px 9px;min-width:28px}
 .zn{font-size:10.5px;color:var(--mute);margin-left:2px;white-space:nowrap}
-#chart{padding:6px 8px 0}
+/* No padding: clientWidth and clientHeight include it, so the viewBox came
+   out 16px wider and 6px taller than the box the SVG actually rendered into,
+   and preserveAspectRatio="none" stretched every candle and label to cover
+   the difference. */
+#chart{padding:0}
 .tools{display:flex;align-items:center;gap:5px;padding:7px 14px;border-bottom:1px solid var(--edge);flex-wrap:wrap}
 .tools .tl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin-right:3px}
 .tools .sep{width:1px;height:18px;background:var(--edge);margin:0 7px}
@@ -591,19 +595,21 @@ const BAL=["function stats() view returns (uint256,uint256,uint256,uint256,uint2
 
 /* ── state ────────────────────────────────────────────────────────── */
 let provider, signer, me, read;
-let cur=1, side="long", tf=300, hoverIdx=null;
+let cur=1, side="long", tf=300, hoverIdx=null, hoverY=null;
 /* View window over the candle array. `span` is how many are visible and
    `offset` is how far back from the newest the right edge sits. Offset zero
    means pinned to live, which is where it returns whenever the timeframe or
    market changes — an old window on a new series would be meaningless. */
-let span=110, offset=0, panFrom=null;
+/* cwPx is the drawn candle width, published out of drawChart so the window
+   level pan handler can convert pixels dragged into candles scrolled. */
+let span=110, offset=0, panFrom=null, cwPx=8;
 /* Vertical scale. Null means auto-fit to the visible candles, which is the
    right default — you almost always want to see the whole range. Dragging
    the price axis sets a manual zoom that persists until you double-click it
    away, so a chart you deliberately stretched does not silently re-fit on
    the next refresh. */
 let vZoom=null, vDrag=null, tDrag=null;
-const SPAN_MIN=20, SPAN_MAX=400;
+const SPAN_MIN=20, SPAN_MAX=1200;
 const series=Object.fromEntries(MKT.map(m=>[m.id,[]])), px={}, stat={}, mstate={};
 let loaded=false, pool=null, poolOwed=null, lastBlock=0, saveTick=0;
 
@@ -906,6 +912,7 @@ function drawChart(){
   const plotW=full;
   const X0=PL;
   const bw=Math.max(1.5, Math.min(cw*GAP, 46));
+  cwPx=cw;
   const X=i=>X0+i*cw+cw/2;
 
   // Time <-> pixel, via candle index so it stays correct across timeframes.
@@ -1014,7 +1021,17 @@ function drawChart(){
   const mark=atLive ? all[all.length-1].c : cs[cs.length-1].c;
   const my=Y(mark);
   let cross="";
-  if(hoverIdx!==null&&cs[hoverIdx]) cross=`<line class="cross" x1="${X(hoverIdx).toFixed(1)}" y1="${PT}" x2="${X(hoverIdx).toFixed(1)}" y2="${(H-PB).toFixed(1)}"/>`;
+  if(hoverIdx!==null&&cs[hoverIdx]){
+    const hx=X(hoverIdx);
+    cross=`<line class="cross" x1="${hx.toFixed(1)}" y1="${PT}" x2="${hx.toFixed(1)}" y2="${(H-PB).toFixed(1)}"/>`;
+    // The horizontal arm with a price on it: reading a level off a vertical
+    // line alone means eyeballing across to the axis and guessing.
+    if(hoverY!==null&&hoverY>PT&&hoverY<PT+mainH){
+      cross+=`<line class="cross" x1="${X0.toFixed(1)}" y1="${hoverY.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${hoverY.toFixed(1)}"/>`
+        + `<rect x="${W-PR+2}" y="${(hoverY-8).toFixed(1)}" width="60" height="16" rx="2" fill="var(--panel)" stroke="var(--edge)"/>`
+        + `<text class="ax" x="${W-PR+6}" y="${(hoverY+4).toFixed(1)}" fill="var(--paper)">${money(Yinv(hoverY))}</text>`;
+    }
+  }
   if(pending) cross+=`<circle cx="${xForT(pending.t).toFixed(1)}" cy="${Y(pending.p).toFixed(1)}" r="3" fill="var(--sky)"/>`;
 
   box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="svg"
@@ -1076,40 +1093,29 @@ function drawChart(){
   const setCls = v => svg.setAttribute("class", v);
   setCls(drawMode ? "armed" : "");
 
+  /* Pointer capture was pointless here: drawChart replaces the whole SVG
+     via innerHTML, so the element holding the capture is detached the moment
+     the drag produces a frame. Panning is tracked at the window instead. */
   svg.onpointerdown=ev=>{
     if(drawMode) return;                       // a draw tool owns the click
     panFrom={x:ev.clientX, off:offset};
     setCls("panning");
-    svg.setPointerCapture?.(ev.pointerId);
-  };
-  svg.onpointerup=ev=>{
-    panFrom=null;
-    // setAttribute, not className: on an SVG element className is a read-only
-  // SVGAnimatedString, so assigning to it throws — and this line sits above
-  // every handler below, so one bad assignment silently unbound the whole
-  // chart: zoom, pan, drawing and indicators all at once.
-  const setCls = v => svg.setAttribute("class", v);
-  setCls(drawMode ? "armed" : "");
-    svg.releasePointerCapture?.(ev.pointerId);
   };
 
+  /* Repaint only when the crosshair lands somewhere new. This fired a full
+     innerHTML rebuild on every pointermove — several hundred a second across
+     a mouse sweep, each one restringing the entire chart and rebinding every
+     handler. That is what made it feel like dragging an anchor. */
   svg.onpointermove=ev=>{
-    if(panFrom){
-      // Convert pixels dragged into candles scrolled, so panning feels the
-      // same whatever the zoom level.
-      const r=svg.getBoundingClientRect();
-      const dx=(ev.clientX-panFrom.x)/r.width*W;
-      offset=Math.round(panFrom.off + dx/cw);
-      drawChart();
-      return;
-    }
-    const {x}=local(ev);
-    const i=Math.round((x-X0-cw/2)/cw);
-    hoverIdx=Math.max(0,Math.min(cs.length-1,i)); showOHLC(cs[hoverIdx]); drawChart();
+    if(panFrom) return;                        // the window handler owns this
+    const {x,y}=local(ev);
+    const i=Math.max(0,Math.min(cs.length-1,Math.round((x-X0-cw/2)/cw)));
+    if(i===hoverIdx && hoverY!==null && Math.abs(hoverY-y)<3) return;
+    hoverIdx=i; hoverY=y; drawChart();
   };
   svg.onpointerleave=()=>{
-    if(panFrom){ panFrom=null; setCls(drawMode?"armed":""); }
-    hoverIdx=null; showOHLC(cs[cs.length-1]); drawChart();
+    if(panFrom) return;                        // a pan that leaves the box keeps going
+    hoverIdx=null; hoverY=null; drawChart();
   };
 
   // Wheel zooms about the cursor, so the candle under the pointer stays put.
@@ -1254,9 +1260,14 @@ function dedupe(){
   }
 }
 
+let histBusy=false, cacheLoaded=false;
 async function history(p){
-  if(loaded) return; loaded=true;
-  const had=loadCache();
+  if(loaded||histBusy) return;
+  histBusy=true;
+  // The cache loads once. A retry must not overwrite prints that live() has
+  // added since the first attempt.
+  const had=cacheLoaded?0:loadCache();
+  cacheLoaded=true;
   if(had){
     const span=Object.values(series).map(a=>a.length?a[a.length-1].t-a[0].t:0);
     log("cache: "+had+" points, "+dur(Math.max(...span,0))+" of history");
@@ -1269,18 +1280,21 @@ async function history(p){
     const iface=new E.Interface(["event PricePushed(uint256 indexed id,uint256 value,uint64 roundId,uint64 at)"]);
 
     // Only reach back to what is missing. Cold start walks further.
-    const floor = lastBlock ? Math.max(0,lastBlock-10) : Math.max(0,latest-60000);
-    let from=latest, got=0, span=5000, guard=0;
+    // Arc blocks every half second, so 120k blocks is about sixteen hours.
+    // Named chunk rather than span: the global `span` is the chart window and
+    // shadowing it here reads like a bug even though it is not one.
+    const floor = lastBlock ? Math.max(0,lastBlock-10) : Math.max(0,latest-120000);
+    let from=latest, got=0, chunk=5000, guard=0;
 
-    while(from>floor && guard++<40){
-      const lo=Math.max(floor,from-span);
+    while(from>floor && guard++<60){
+      const lo=Math.max(floor,from-chunk);
       let logs;
       try{
         logs=await p.getLogs({address:A.engine,topics:[topic],fromBlock:lo,toBlock:from});
       }catch(e){
         // A refused range is not the end of the walk. Halve it and retry;
-        // only give up once the span is too small to be worth asking for.
-        if(span>500){ span=Math.floor(span/2); continue; }
+        // only give up once the chunk is too small to be worth asking for.
+        if(chunk>500){ chunk=Math.floor(chunk/2); continue; }
         break;
       }
       for(const l of logs){
@@ -1294,11 +1308,19 @@ async function history(p){
         }catch{}
       }
       from=lo-1;
-      if(got>4000) break;
+      if(got>12000) break;
     }
     lastBlock=latest;
     dedupe(); saveCache();
-  }catch(e){ dedupe(); }
+    loaded=true;                 // latch only on success
+  }catch(e){
+    // Latching on entry meant one rate-limited backfill at boot left the
+    // chart with no history for the rest of the session. The refresh cycle
+    // calls this again in thirty seconds.
+    dedupe();
+    log("history backfill failed, retrying next cycle: "+(e.shortMessage||e.message));
+  }
+  histBusy=false;
 }
 
 function live(id,p,t){
@@ -1323,7 +1345,7 @@ function paintMkts(){
       <span class="st ${cls}">${STATUS[s]??"—"}</span></button>`;
   }).join("");
   $("mkts").querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{
-    cur=Number(b.dataset.m); hoverIdx=null; offset=0; paintMkts(); drawChart(); quote(); paintStats();
+    cur=Number(b.dataset.m); hoverIdx=null; hoverY=null; offset=0; paintMkts(); drawChart(); quote(); paintStats();
   });
 }
 
@@ -1353,7 +1375,7 @@ function paintStats(){
 /* ── ticket ───────────────────────────────────────────────────────── */
 $("tfs").innerHTML=TFS.map(t=>`<button class="tf${t.s===tf?" on":""}" data-tf="${t.s}">${t.k}</button>`).join("");
 $("tfs").querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{
-  tf=Number(b.dataset.tf); hoverIdx=null; offset=0;
+  tf=Number(b.dataset.tf); hoverIdx=null; hoverY=null; offset=0;
   $("tfs").querySelectorAll(".tf").forEach(x=>x.className="tf"+(Number(x.dataset.tf)===tf?" on":""));
   drawChart();
 });
@@ -1799,6 +1821,10 @@ let histLoaded=false, histRunning=false, histNote="";
    the chain; "not read yet" is a claim about this page, and they should not
    look the same. */
 let lpHistRead=false;
+/* Whether the pool figures have ever come back at all this session, as
+   distinct from having come back zero. A refused read and an empty position
+   are different answers and must not render the same. */
+let lpRead=false;
 let isOwner=false;
 
 /* Log scans are slow and can hang. They used to run inside the refresh
@@ -2047,8 +2073,10 @@ function paintFStats(){
     <div class="stat"><span class="k">Fees paid</span><span class="v">${money(fees)}</span>
       <span class="s">0.1% each way on size</span></div>
     <div class="stat"><span class="k">Your LP position</span>
-      <span class="v">${lpShares>0n?money(val):"—"}</span>
-      <span class="s">${lpShares>0n?"in the pool":"not a depositor"}</span></div>
+      <span class="v">${lpRead&&lpShares>0n?money(val):"—"}</span>
+      <span class="s">${!me?"connect a wallet"
+        :!lpRead?"pool read refused — retrying"
+        :lpShares>0n?"in the pool":"not a depositor"}</span></div>
     <div class="stat"><span class="k">Earned as the house</span>
       <span class="v ${put>0?((val-put)>=0?"ok":"bad"):""}">${
         lpShares===0n?"—":put>0?sgn(val-put):"unknown"}</span>
@@ -2123,9 +2151,11 @@ function paintLp(){
       put>0 ? sgn(val-put)+" CHIP"
       : "<span style='color:var(--mute)'>needs the deposit history</span>"}</b></div>
     <div class="kvrow"><span>Withdrawable right now</span><b>${money(free,2)} CHIP</b></div>`:`
-    <p class="secP" style="margin-top:12px">You are not a depositor. Depositing makes you counterparty to
-    every trade here — traders who lose pay into the pool, traders who win are paid out of it, and every
-    fee lands here regardless of who was right.</p>`}
+    <p class="secP" style="margin-top:12px">${!me
+      ? "Connect a wallet to see whether you hold shares in the pool."
+      : !lpRead
+      ? "The pool would not answer on this endpoint, so this cannot say whether you hold shares. Switch RPC in the top bar, or wait for the next cycle."
+      : "You are not a depositor. Depositing makes you counterparty to every trade here — traders who lose pay into the pool, traders who win are paid out of it, and every fee lands here regardless of who was right."}</p>`}
     <div class="lprow" style="margin-top:12px">
       <input type="text" id="lpDep" placeholder="amount to deposit">
       <button class="lpbtn" id="btnDep">Approve &amp; deposit</button>
@@ -2226,20 +2256,29 @@ function paintAdmin(){
    the trading view. One read, three panels — the whole reason for merging
    the pages. */
 async function paintSide(p){
-  try{
-    if(me){
-      const c=new E.Contract(A.chips,CHIPS,p);
-      $("aChip").textContent=n2(await c.balanceOf(me),6)+" CHIP";
+  /* Three reads, three guards. They used to share one try with a silent
+     catch, so a failed chips balance skipped the pool reads entirely and the
+     portfolio told a funded wallet it was not a depositor — with nothing in
+     the log to say otherwise. */
+  if(me){
+    try{
+      $("aChip").textContent=n2(await new E.Contract(A.chips,CHIPS,p).balanceOf(me),6)+" CHIP";
+    }catch(e){ log("chip balance failed: "+(e.shortMessage||e.message)); }
+
+    try{
       const b=new E.Contract(A.ballast,BAL2,p);
       lpShares=await b.balanceOf(me);
       lpValue =lpShares>0n?await b.convertToAssets(lpShares):0n;
       lpMax   =await b.maxWithdraw(me);
-      const en=new E.Contract(A.engine,ENG2,p);
-      const cfg=await en.markets(1);
+      lpRead=true;
+    }catch(e){ lpRead=false; log("pool read failed: "+(e.shortMessage||e.message)); }
+
+    try{
+      const cfg=await new E.Contract(A.engine,ENG2,p).markets(1);
       const f=Number(cfg.fundingFactor);
       $("aFund").textContent=(f/1e6*100).toFixed(4)+"%/hr · "+(f/1e6*100*24).toFixed(2)+"%/day";
-    }
-  }catch(e){}
+    }catch(e){}
+  }
   await checkOwner(p);
   if(isOwner) await paintOwnerState(p);
   paintAdmin(); paintFStats(); paintClosed(); paintLp();
@@ -2455,7 +2494,21 @@ addEventListener("pointermove", ev=>{
   span = Math.max(SPAN_MIN, Math.min(SPAN_MAX, Math.round(tDrag.span * f)));
   drawChart();
 });
-addEventListener("pointerup", ()=>{ vDrag=null; tDrag=null; });
+/* Pan lives at the window because the SVG it started on no longer exists by
+   the second frame of the drag. */
+addEventListener("pointermove", ev=>{
+  if(!panFrom) return;
+  offset=Math.round(panFrom.off + (ev.clientX-panFrom.x)/cwPx);
+  drawChart();
+});
+addEventListener("pointerup", ()=>{
+  if(panFrom){
+    panFrom=null;
+    const s=document.getElementById("svg");
+    if(s) s.setAttribute("class", drawMode?"armed":"");
+  }
+  vDrag=null; tDrag=null;
+});
 
 /* ── ticket width, dragged and remembered ─────────────────────────── */
 const W_KEY="pit.tickw", W_MIN=240, W_MAX=560;
@@ -2503,7 +2556,11 @@ function setSpan(next, anchorRight){
 }
 $("zIn").onclick  = ()=>setSpan(span/1.4, true);
 $("zOut").onclick = ()=>setSpan(span*1.4, true);
-$("zFit").onclick = ()=>{ span=SPAN_MAX; offset=0; vZoom=null; drawChart(); };
+// Fit means fit what exists, not fit the arbitrary ceiling.
+$("zFit").onclick = ()=>{
+  const n=candles(cur,tf).length||SPAN_MAX;
+  span=Math.max(SPAN_MIN,Math.min(SPAN_MAX,n)); offset=0; vZoom=null; drawChart();
+};
 $("zReset").onclick = ()=>{ vZoom=null; drawChart(); };
 
 /* ── theme ────────────────────────────────────────────────────────── */

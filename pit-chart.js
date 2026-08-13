@@ -276,6 +276,14 @@ export function markPositions(rows, marketId, fmtUnits) {
 }
 
 export function fit() { chart && chart.timeScale().fitContent(); }
+
+/** Re-measures the container. autoSize handles a resize, but not a container
+    that had no size when the chart was first built. */
+export function resize() {
+  if (!chart) return;
+  const box = document.getElementById("chart");
+  if (box && box.clientHeight > 0) chart.resize(box.clientWidth, box.clientHeight);
+}
 export function raw() { return { chart, series: candleSeries }; }
 
 /* The drawing layer projects from time and price to pixels, so it has to

@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<link rel="icon" href="data:,">
 <meta charset="utf-8">
+<link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Pit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,6 +36,8 @@ a{color:var(--sky)}
 .brand{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:19px;
        letter-spacing:.02em;text-transform:uppercase}
 .brand span{color:var(--sky)}
+.brand a{color:inherit;text-decoration:none}
+.brand a:hover span{filter:brightness(1.2)}
 .topright{display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}
 .pill{border:1px solid var(--edge);border-radius:2px;padding:6px 11px;color:var(--mute);
       background:transparent;cursor:pointer;font:inherit;font-size:12px;
@@ -213,7 +215,7 @@ tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
 <body>
 
 <div class="top">
-  <div class="brand">The <span>Pit</span></div>
+  <div class="brand"><a href="index.html" title="Back to the landing page">The <span>Pit</span></a></div>
   <div class="topright">
     <span class="rpcwarn" id="rpcWarn"></span>
     <button class="pill" id="btnTheme" title="Light or dark">☾</button>

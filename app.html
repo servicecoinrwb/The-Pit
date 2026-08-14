@@ -120,6 +120,13 @@ body.vresizing{cursor:col-resize;user-select:none}
 /* ── ticket ──────────────────────────────────────── */
 .ticket{padding:14px}
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
+.kinds{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:11px}
+.kind{background:transparent;border:1px solid var(--edge);color:var(--mute);
+      padding:7px 0;cursor:pointer;border-radius:2px;font-size:11px;
+      letter-spacing:.07em;text-transform:uppercase}
+.kind.on{border-color:var(--sky);color:var(--sky);
+         background:color-mix(in srgb, var(--sky) 10%, transparent)}
+.tinynote{font-size:11px;color:var(--mute);line-height:1.5;margin-top:6px}
 .side{background:transparent;border:1px solid var(--edge);color:var(--mute);
       padding:10px;cursor:pointer;border-radius:2px;
       font:600 13px "IBM Plex Sans Condensed",sans-serif;letter-spacing:.08em;text-transform:uppercase}
@@ -282,11 +289,20 @@ tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
         <button class="side long on" data-side="long">Long</button>
         <button class="side short" data-side="short">Short</button>
       </div>
+      <div class="kinds">
+        <button class="kind on" data-kind="market">Market</button>
+        <button class="kind" data-kind="resting">Resting order</button>
+      </div>
       <label for="fSize">Size (CHIP)</label>
       <input type="text" id="fSize" value="1000" inputmode="decimal">
       <label for="fMargin">Margin (CHIP)</label>
       <input type="text" id="fMargin" value="100" inputmode="decimal">
       <div class="levs" id="levs"></div>
+      <div id="restBox" hidden>
+        <label for="fTrigger">Trigger price</label>
+        <input type="text" id="fTrigger" placeholder="fills when price reaches this" inputmode="decimal">
+        <p class="tinynote" id="restSide"></p>
+      </div>
       <div style="margin-top:14px">
         <div class="kv"><span class="k">Entry</span><span class="v" id="qEntry">—</span></div>
         <div class="kv"><span class="k">Leverage</span><span class="v" id="qLev">—</span></div>
@@ -305,10 +321,12 @@ tr.danger td{background:color-mix(in srgb, var(--rust) 12%, transparent)}
   <div class="below">
     <div class="tabs">
       <button class="tb on" data-tab="pos">Positions</button>
+      <button class="tb" data-tab="orders">Orders</button>
       <button class="tb" data-tab="desk">Desk</button>
       <button class="tb" data-tab="log">Activity</button>
     </div>
     <div id="tabPos" class="wrapscroll"></div>
+    <div id="tabOrders" class="wrapscroll" hidden></div>
     <div id="tabDesk" class="wrapscroll" hidden></div>
     <div id="tabLog" hidden><div id="log"></div></div>
   </div>

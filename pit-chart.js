@@ -157,8 +157,14 @@ export function build(box, onCrosshair) {
               fontFamily: '"IBM Plex Mono",monospace', fontSize: 11 },
     grid: { vertLines: { color: c.grid, style: 1 }, horzLines: { color: c.grid, style: 1 } },
     rightPriceScale: { borderColor: c.grid, scaleMargins: { top: 0.12, bottom: 0.12 } },
+    /* maxBarSpacing caps how far a candle will stretch. Without it, thirty
+       hourly bars across a wide chart become inch-wide slabs — the library
+       fills the space it is given, which is right until there is far more
+       space than data. The 5m and 15m charts looked correct only because
+       they happened to have enough bars to fill it. */
     timeScale: { borderColor: c.grid, timeVisible: true, secondsVisible: false,
-                 rightOffset: 4, barSpacing: 9 },
+                 rightOffset: 4, barSpacing: 9, minBarSpacing: 0.5,
+                 maxBarSpacing: 26 },
     crosshair: { mode: LWC().CrosshairMode.Normal },
     handleScroll: true, handleScale: true, autoSize: true,
   });

@@ -28,7 +28,8 @@ const S = {
   view: "trade",
   market: 1,
   tf: 300,
-  side: "long",
+  side: "long", kind: "market",
+  orders: [], orderError: null,
   wallet: null, signer: null,
   prices: {}, markets: {}, positions: [], posError: null,
   pool: null, chips: 0n, owner: null,
@@ -287,12 +288,35 @@ function quote() {
   }
 
   const go = $("btnGo");
-  go.textContent = "Open " + S.side;
+  go.textContent = S.kind === "resting" ? "Place " + S.side + " order" : "Open " + S.side;
   go.style.background = S.side === "long" ? "var(--jade)" : "var(--rust)";
   go.style.color = S.side === "long" ? "var(--ink)" : "var(--paper)";
 
+  /* Which way a resting order fires is derived, not asked. A buy above the
+     mark is a breakout stop; a buy below it is a limit. Making the trader
+     choose "above or below" as well as a price is asking them to restate
+     something the numbers already say, and it is the kind of question people
+     get backwards. */
+  const trig = Number($("fTrigger").value || 0);
+  if (S.kind === "resting") {
+    if (!trig || !p) {
+      $("restSide").textContent = "Enter a trigger price.";
+    } else {
+      const above = trig > p;
+      const what = S.side === "long"
+        ? (above ? "buy stop — fills on a break upward" : "buy limit — fills on a dip")
+        : (above ? "sell limit — fills on a rally" : "sell stop — fills on a break downward");
+      $("restSide").innerHTML = `<b style="color:var(--paper)">${what}</b><br>` +
+        `Filled at the oracle price when it crosses, not at ${P.money(trig)} — ` +
+        `a gap through it fills past it. Margin is held by the desk until it fills or you cancel.`;
+    }
+  }
+
   let msg = "", kind = "";
   if (st !== 0) msg = `${meta.sym} is ${(P.STATUS[st] || "unavailable").toLowerCase()} — the engine will reject an open.`;
+  else if (S.kind === "resting" && !trig) msg = "A resting order needs a trigger price.";
+  else if (S.kind === "resting" && p && Math.abs(trig - p) / p < 0.0005)
+    msg = "That trigger is where the price already is — use a market order.";
   else if (size < 10) msg = "Minimum size is 10 CHIP.";
   else if (net <= 0) msg = "Margin must exceed the open fee.";
   else if (lev > meta.lev) msg = `${lev.toFixed(1)}x is over the ${meta.lev}x cap on ${meta.sym}.`;
@@ -497,6 +521,49 @@ async function ensureAllowance(amount, spender, whySel) {
 }
 
 // ── desk ──────────────────────────────────────────────────────────────
+
+function paintOrders() {
+  if (!S.wallet) {
+    $("tabOrders").innerHTML = '<div class="none">Connect a wallet to see your resting orders.</div>';
+    return;
+  }
+  if (S.orderError) {
+    $("tabOrders").innerHTML = `<div class="none" style="color:var(--rust)">${S.orderError}</div>`;
+    return;
+  }
+  if (!S.orders.length) {
+    $("tabOrders").innerHTML = `<div class="none">No resting orders.<br>
+      A resting order holds its margin in the desk until it fills or you cancel it —
+      that capital is committed even though nothing is open yet.</div>`;
+    return;
+  }
+
+  const rows = S.orders.map(o => {
+    const sym = (P.MARKETS.find(m => m.id === o.market) || {}).sym || o.market;
+    const mark = (S.prices[o.market] || {}).price || 0;
+    const t = P.num(o.trigger, 18);
+    const away = mark ? ((t - mark) / mark * 100) : 0;
+    const what = o.isLong
+      ? (o.above ? "buy stop" : "buy limit")
+      : (o.above ? "sell limit" : "sell stop");
+    return `<tr>
+      <td><span class="tag ${o.isLong ? "long" : "short"}">${o.isLong ? "LONG" : "SHORT"}</span> ${sym}</td>
+      <td style="color:var(--mute)">${what}</td>
+      <td>${P.fmt(o.size, 6, 0)}</td>
+      <td>${P.fmt(o.margin, 6)}</td>
+      <td>${P.money(t)}</td>
+      <td class="${Math.abs(away) < 0.25 ? "warn" : ""}">${mark ? (away >= 0 ? "+" : "") + away.toFixed(2) + "%" : "—"}</td>
+      <td><button class="mini" data-cancelord="${o.id}">Cancel</button></td></tr>`;
+  }).join("");
+
+  $("tabOrders").innerHTML = `<table><thead><tr>
+    <th>Market</th><th>Kind</th><th>Size</th><th>Margin held</th>
+    <th>Trigger</th><th>Away</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  $("tabOrders").querySelectorAll("[data-cancelord]").forEach(b => b.onclick = () =>
+    send(() => P.contract("floor", S.signer).cancelOrder(b.dataset.cancelord),
+      "Cancel order #" + b.dataset.cancelord, "note"));
+}
 
 function paintDesk() {
   const rows = P.MARKETS.map(m => {
@@ -833,6 +900,12 @@ async function doRefresh() {
       const r = await P.readPositions(S.wallet);
       S.positions = r.rows; S.posError = r.error;
     } catch (e) { }
+      try {
+      const o = await P.readOrders(S.wallet);
+      S.orders = o.rows; S.orderError = o.error;
+    } catch (e) { }
+  }
+  if (S.wallet) {
     try { S.chips = await P.readChips(S.wallet); } catch (e) { }
     try { S.owner = await P.isOwner(S.wallet); } catch (e) { }
   }
@@ -855,6 +928,7 @@ function paintAll() {
   safe(paintStats, "Stats");
   safe(quote, "Ticket");
   safe(paintPositions, "Positions");
+  safe(paintOrders, "Orders");
   safe(paintDesk, "Desk");
   safe(paintPortfolio, "Portfolio");
   safe(paintHistory, "History");
@@ -912,7 +986,8 @@ export async function boot() {
      is one handler. */
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
     document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("on", x === b));
-    $("tabPos").hidden  = b.dataset.tab !== "pos";
+    $("tabPos").hidden    = b.dataset.tab !== "pos";
+    $("tabOrders").hidden = b.dataset.tab !== "orders";
     $("tabDesk").hidden = b.dataset.tab !== "desk";
     $("tabLog").hidden  = b.dataset.tab !== "log";
   });
@@ -932,9 +1007,30 @@ export async function boot() {
     const marg = E.parseUnits(($("fMargin").value || "0").trim(), 6);
     if (S.chips < marg) return note("note", `Only ${P.fmt(S.chips, 6)} CHIP on hand.`, "err");
     if (!await ensureAllowance(marg, P.A.floorplan, "#note")) return;
+
+    if (S.kind === "resting") {
+      const t = Number($("fTrigger").value || 0);
+      const p = (S.prices[S.market] || {}).price || 0;
+      if (!t || !p) return note("note", "A resting order needs a trigger price.", "err");
+      // spec is [marketId, trigger, size, margin, expiry] — packed into an
+      // array because the contract ran out of stack otherwise.
+      const spec = [S.market, E.parseUnits(String(t), 18), size, marg, 0];
+      return send(() => P.contract("floor", S.signer)
+        .placeOrder(spec, S.side === "long", t > p), "Place " + S.side + " order", "note");
+    }
+
     await send(() => P.contract("floor", S.signer).open(S.market, S.side === "long", size, marg),
       "Open " + S.side, "note");
   };
+
+  document.querySelectorAll("[data-kind]").forEach(b => b.onclick = () => {
+    S.kind = b.dataset.kind;
+    document.querySelectorAll("[data-kind]").forEach(x =>
+      x.classList.toggle("on", x.dataset.kind === S.kind));
+    $("restBox").hidden = S.kind !== "resting";
+    quote();
+  });
+  $("fTrigger").addEventListener("input", quote);
 
   $("zFit").onclick = () => C.fit();
 

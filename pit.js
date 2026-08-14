@@ -2,7 +2,7 @@
    Everything that touches the chain. No rendering, no DOM.
 
    One copy of every address and ABI. Three separate pages each keeping
-   their own copies is how a page spent an afternoon decoding a new 
+   their own copies is how a page spent an afternoon decoding a new
    contract with an old tuple while another page read it correctly.
 */
 
@@ -76,6 +76,11 @@ const FLOOR_ABI = [
   "function setTriggers(uint256,uint128,uint128)",
   "function positionsOf(address) view returns (uint256[])",
   "function positionView(uint256) view returns (tuple(address owner,uint32 marketId,bool isLong,uint64 openedAt,uint128 size,uint128 margin,uint128 entryPrice,int256 entryFunding,uint256 entryBorrow,uint128 stopLoss,uint128 takeProfit) p,uint256 price,int256 pnl,int256 funding,int256 equity,uint256 maintenance,uint256 liqPrice,bool liquidatable)",
+  "function placeOrder(uint256[5] spec,bool isLong,bool above) returns (uint256)",
+  "function cancelOrder(uint256)",
+  "function ordersOf(address) view returns (uint256[])",
+  "function orders(uint256) view returns (address owner,uint32 marketId,bool isLong,bool above,uint64 expiry,uint128 size,uint128 margin,uint128 trigger)",
+  "function orderReady(uint256) view returns (bool ready,uint256 price)",
   "function marketView(uint256) view returns (uint256 longSize,uint256 shortSize,int256 skew,int256 fundingHourly,int256 cumFunding,uint256 reserved,uint256 price,uint8 status)",
   "function poolPnl() view returns (int256)",
   "function tradeStats(address) view returns (uint256 closed,int256 net,uint256 fees,uint256 wins)",
@@ -313,6 +318,35 @@ export async function readPositions(who) {
 }
 
 /** Pool state, and the caller's stake in it. */
+/**
+ * Resting orders waiting on a price.
+ *
+ * Margin sits in the desk from the moment an order is placed, so an order the
+ * trader has forgotten about is capital they cannot see. Showing them is not
+ * optional.
+ */
+export async function readOrders(who) {
+  if (!who) return { rows: [], error: null };
+  const fl = contract("floor");
+  let ids;
+  try { ids = await fl.ordersOf(who); }
+  catch (e) { return { rows: [], error: e.shortMessage || e.message }; }
+
+  const rows = [];
+  for (const id of ids) {
+    try {
+      const o = await fl.orders(id);
+      if (o.owner === E.ZeroAddress) continue;
+      rows.push({
+        id: id.toString(), market: Number(o.marketId), isLong: o.isLong,
+        above: o.above, expiry: Number(o.expiry),
+        size: o.size, margin: o.margin, trigger: o.trigger,
+      });
+    } catch (e) { }
+  }
+  return { rows, error: null };
+}
+
 export async function readPool(who) {
   const v = contract("vault");
   const out = { stats: null, mine: null, owed: null };

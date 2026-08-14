@@ -186,20 +186,32 @@ async function loadCandles(force) {
   };
 }
 
+/* Called from every path that builds a chart, not just the first one.
+   It used to live inside drawChart's "if the chart does not exist yet"
+   branch — but boot builds the chart directly, so by the time drawChart ran
+   the chart existed and the drawing layer was never attached. The buttons
+   toggled state nothing was listening to. */
+let drawingAttached = false;
+function attachDrawing() {
+  const { chart, series } = C.raw();
+  if (!chart || !series) return;
+  D.attach($("chart"), chart, series, S.market, m => {
+    document.querySelectorAll("[data-draw]").forEach(b =>
+      b.classList.toggle("on", b.dataset.draw === m));
+    $("drawhint").textContent = D.hint();
+  });
+  if (!drawingAttached) {
+    // Drawings are stored in time and price, so they have to be reprojected
+    // whenever the visible range moves.
+    C.onViewChange(() => D.render());
+    drawingAttached = true;
+  }
+}
+
 function drawChart() {
   if (S.view !== "trade") return;
-  if (!C.alive()) {
-    C.build($("chart"), showOHLC);
-    const { chart, series } = C.raw();
-    D.attach($("chart"), chart, series, S.market, m => {
-      document.querySelectorAll("[data-draw]").forEach(b =>
-        b.classList.toggle("on", b.dataset.draw === m));
-      $("drawhint").textContent = D.hint();
-    });
-    // Redraw the overlay whenever the visible range moves, or the drawings
-    // detach from the candles they were placed against.
-    C.onViewChange(() => D.render());
-  }
+  if (!C.alive()) C.build($("chart"), showOHLC);
+  attachDrawing();
 
   const p = S.prices[S.market];
   const key = S.market + ":" + S.tf;
@@ -941,6 +953,8 @@ export async function boot() {
     $("btnTheme").textContent = light ? "☀" : "☾";
     // The chart bakes the palette into its options, so it has to be rebuilt.
     C.build($("chart"), showOHLC);
+    drawingAttached = false;      // the old chart object is gone
+    attachDrawing();
     drawChart();
   };
   if (localStorage.getItem("pit.theme") === "light") {
@@ -973,6 +987,7 @@ export async function boot() {
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
   C.build($("chart"), showOHLC);
+  attachDrawing();
   paintAll();
 
   /* One cheap call before the burst. A fresh provider has to resolve the
